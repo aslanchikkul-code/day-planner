@@ -1,6 +1,8 @@
 "use strict";
 
 const storageKey = "rhythm-day-planner-v1";
+const backupFormat = "rhythm-planner";
+const backupVersion = 1;
 const byId = id => document.getElementById(id);
 const grid = byId("date-grid");
 const timeline = byId("timeline");
@@ -44,10 +46,11 @@ let tasks = [];
 let selected = dateKey(new Date());
 let view = "week";
 let importantOnly = false;
+let completedView = false;
 let editingTask = null;
 
 function dateKey(date) {
-  return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
+  return String(date.getFullYear()).padStart(4, "0") + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
 }
 
 function atDate(key) {
@@ -129,6 +132,43 @@ function tasksFor(key) {
     }
   }
   return entries.sort((a, b) => a.time.localeCompare(b.time));
+}
+
+function recordedTasks() {
+  const entries = [];
+  for (const task of tasks) {
+    if (!task.repeat) {
+      entries.push(task);
+      continue;
+    }
+    for (const [date, patch] of Object.entries(task.occurrences || {})) {
+      if (repeatsOn(task, date) && !patch.deleted) entries.push(occurrence(task, date, patch));
+    }
+  }
+  return entries;
+}
+
+// A repeating series can be open-ended. Find one nearby, unmodified occurrence.
+function nearbyOccurrence(task, today) {
+  const step = task.repeat === "daily" ? 1 : 7;
+  const weekday = atDate(task.date).getDay();
+  const start = atDate(today > task.date ? today : task.date);
+  const forward = step === 1 ? 0 : (weekday - start.getDay() + 7) % 7;
+  let date = plusDays(start, forward);
+  while (!task.until || dateKey(date) <= task.until) {
+    const key = dateKey(date);
+    if (!Object.hasOwn(task.occurrences || {}, key)) return occurrence(task, key);
+    date = plusDays(date, step);
+  }
+  const last = atDate(task.until && task.until < today ? task.until : today);
+  const back = step === 1 ? 0 : (last.getDay() - weekday + 7) % 7;
+  date = plusDays(last, -back);
+  while (dateKey(date) >= task.date) {
+    const key = dateKey(date);
+    if (!Object.hasOwn(task.occurrences || {}, key)) return occurrence(task, key);
+    date = plusDays(date, -step);
+  }
+  return null;
 }
 
 function visibleTasksFor(key) {
@@ -223,7 +263,7 @@ function renderCalendar() {
     button.setAttribute("aria-label", fullDate.format(day) + ", дел: " + entries.length);
     const content = element("span", "day-button-content");
     content.append(element("span", "day-number", day.getDate()));
-    const previewLimit = isWeek ? 6 : 2;
+    const previewLimit = isWeek ? 6 : 1;
     for (const task of entries.slice(0, previewLimit)) {
       const preview = element("span", "day-preview");
       preview.classList.toggle("important", Boolean(task.important));
@@ -233,7 +273,7 @@ function renderCalendar() {
       content.append(preview);
     }
     if (entries.length > previewLimit) {
-      content.append(element("span", "day-more", "Ещё " + (entries.length - previewLimit)));
+      content.append(element("span", "day-more", (isWeek ? "Ещё " : "+") + (entries.length - previewLimit)));
     }
     button.append(content);
     button.addEventListener("click", () => {
@@ -267,6 +307,7 @@ function taskRow(task) {
   });
   const edit = element("button");
   edit.type = "button";
+  edit.dataset.taskId = task.id;
   edit.title = "Изменить или перенести";
   edit.setAttribute("aria-label", (task.important ? "Важное дело. " : "") + "Изменить или перенести «" + task.title + "»");
   const recurrence = task.seriesId ? " · " + (task.repeat === "daily" ? "Ежедневно" : "Еженедельно") : "";
@@ -332,7 +373,115 @@ function renderAgenda(scroll, targetHour) {
   }
 }
 
+const searchInput = byId("task-search");
+const searchPanel = byId("search-panel");
+
+function showOnCalendar(task) {
+  clearSearch();
+  completedView = false;
+  if (importantOnly && !task.important) {
+    importantOnly = false;
+    importantFilter.setAttribute("aria-pressed", "false");
+  }
+  selected = task.date;
+  render(true, Math.floor(timeInMinutes(task.time) / 60));
+  const button = [...timeline.querySelectorAll("[data-task-id]")].find(item => item.dataset.taskId === task.id);
+  button?.focus({preventScroll: true});
+}
+
+function resultRow(task) {
+  const row = element("li");
+  const button = element("button", "result-row");
+  button.type = "button";
+  button.addEventListener("click", () => showOnCalendar(task));
+  const text = element("span", "result-text");
+  const title = element("strong", "", task.title);
+  if (task.important) title.prepend(element("span", "important-star", "★ "));
+  const date = atDate(task.date);
+  const detail = capitalize(fullDate.format(date)) + " " + date.getFullYear() + " · " + timeRange(task);
+  const period = task.repeat ? task.repeat === "daily" ? " · Ежедневно" : " · Еженедельно" : "";
+  text.append(title, element("span", "result-detail", detail + period));
+  const badge = element("span", task.done ? "result-badge done" : "result-badge", task.done ? "Выполнено" : "В плане");
+  button.append(text, badge);
+  row.append(button);
+  return row;
+}
+
+function compareByDate(a, b) {
+  return a.date.localeCompare(b.date) || a.time.localeCompare(b.time) || a.title.localeCompare(b.title, "ru");
+}
+
+function renderCompleted() {
+  const completed = recordedTasks().filter(task => task.done).sort((a, b) => compareByDate(b, a));
+  byId("completed-results").replaceChildren(...completed.map(resultRow));
+  byId("completed-empty").hidden = completed.length > 0;
+}
+
+function queryText(text) {
+  return text.toLocaleLowerCase("ru").replaceAll("ё", "е");
+}
+
+function renderSearch() {
+  const query = queryText(searchInput.value.trim());
+  searchPanel.hidden = !query;
+  const list = byId("search-results");
+  if (!query) {
+    list.replaceChildren();
+    return;
+  }
+  const today = dateKey(new Date());
+  const matches = task => queryText(task.title).includes(query);
+  const found = recordedTasks().filter(matches);
+  for (const series of tasks) {
+    if (!series.repeat || !matches(series)) continue;
+    const next = nearbyOccurrence(series, today);
+    if (next) found.push(next);
+  }
+  found.sort((a, b) => {
+    const pastA = a.date < today;
+    const pastB = b.date < today;
+    if (pastA !== pastB) return Number(pastA) - Number(pastB);
+    return pastA ? compareByDate(b, a) : compareByDate(a, b);
+  });
+  list.replaceChildren(...found.map(resultRow));
+  byId("search-empty").hidden = found.length !== 0;
+}
+
+function clearSearch() {
+  searchInput.value = "";
+  renderSearch();
+}
+
+searchInput.addEventListener("input", renderSearch);
+byId("search-area").addEventListener("keydown", event => {
+  if (event.key === "Escape" && !searchPanel.hidden) {
+    clearSearch();
+    searchInput.focus();
+  }
+});
+
+function setCompletedView(value) {
+  completedView = value;
+  clearSearch();
+  render(!value);
+}
+
+byId("show-calendar").addEventListener("click", () => setCompletedView(false));
+byId("show-completed").addEventListener("click", () => setCompletedView(true));
+
 function render(scroll = false, targetHour) {
+  byId("show-calendar").setAttribute("aria-pressed", !completedView);
+  byId("show-completed").setAttribute("aria-pressed", completedView);
+  byId("page-title").textContent = completedView ? "Выполненные дела" : "Мой календарь";
+  byId("calendar-range").hidden = completedView;
+  byId("calendar-controls").hidden = completedView;
+  byId("calendar-layout").hidden = completedView;
+  byId("completed-panel").hidden = !completedView;
+  renderSearch();
+  if (completedView) {
+    renderCompleted();
+    return;
+  }
   renderCalendar();
   renderAgenda(scroll, targetHour);
   if (scroll) {
@@ -405,6 +554,7 @@ byId("task-form").addEventListener("submit", event => {
   })) return;
   dialog.close();
   selected = date;
+  completedView = false;
   render(true, Number(time.slice(0, 2)));
   byId("add-day-task").focus({preventScroll: true});
   announce(moved ? "Дело перенесено." : "Дело сохранено.");
@@ -456,6 +606,119 @@ importantFilter.addEventListener("click", () => {
   importantOnly = !importantOnly;
   importantFilter.setAttribute("aria-pressed", importantOnly);
   render(true);
+});
+
+function validDate(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && dateKey(atDate(value)) === value;
+}
+
+function validTaskFields(task, partial = false) {
+  return (partial && task.title === undefined || typeof task.title === "string" && task.title.trim() && task.title.length <= 120)
+    && (partial && task.date === undefined || validDate(task.date))
+    && (partial && task.time === undefined || typeof task.time === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(task.time))
+    && (task.duration === undefined || Number.isInteger(task.duration) && task.duration >= 1 && task.duration <= minutesPerDay)
+    && (task.done === undefined || typeof task.done === "boolean")
+    && (task.important === undefined || typeof task.important === "boolean");
+}
+
+function restoreBackup(text) {
+  const backup = JSON.parse(text);
+  if (backup?.format !== backupFormat || backup.version !== backupVersion || !Array.isArray(backup.tasks)) {
+    throw new Error("Неизвестный формат резервной копии.");
+  }
+  return backup.tasks.map(task => {
+    if (!task || typeof task.id !== "string" || !/^[a-z0-9_-]{1,100}$/i.test(task.id) || !validTaskFields(task)) {
+      throw new Error("В копии есть некорректное дело.");
+    }
+    const result = {id: task.id, title: task.title, date: task.date, time: task.time, done: task.done ?? false};
+    if (task.duration !== undefined) result.duration = task.duration;
+    if (task.important !== undefined) result.important = task.important;
+    if (task.repeat === undefined) return result;
+    if (!["daily", "weekly"].includes(task.repeat)) throw new Error("Некорректный повтор.");
+    result.repeat = task.repeat;
+    if (task.until !== undefined) {
+      if (!validDate(task.until) || task.until < task.date) throw new Error("Некорректная дата окончания повтора.");
+      result.until = task.until;
+    }
+    if (task.occurrences === undefined) return result;
+    if (!task.occurrences || typeof task.occurrences !== "object" || Array.isArray(task.occurrences)) {
+      throw new Error("Некорректное расписание повторов.");
+    }
+    result.occurrences = {};
+    for (const [date, patch] of Object.entries(task.occurrences)) {
+      if (!validDate(date) || !patch || typeof patch !== "object" || Array.isArray(patch)
+          || !validTaskFields(patch, true) || (patch.deleted !== undefined && typeof patch.deleted !== "boolean")) {
+        throw new Error("В копии есть некорректный перенос или отметка.");
+      }
+      result.occurrences[date] = {};
+      for (const key of ["title", "date", "time", "duration", "important", "done", "deleted"]) {
+        if (patch[key] !== undefined) result.occurrences[date][key] = patch[key];
+      }
+    }
+    return result;
+  });
+}
+
+const backupDialog = byId("backup-dialog");
+const backupFile = byId("backup-file");
+
+function showBackupStatus(message, error = false) {
+  const status = byId("backup-status");
+  status.textContent = message;
+  status.classList.toggle("error", error);
+  status.hidden = !message;
+}
+
+byId("open-backup").addEventListener("click", () => {
+  showBackupStatus("");
+  backupDialog.showModal();
+});
+byId("close-backup").addEventListener("click", () => backupDialog.close());
+byId("export-backup").addEventListener("click", () => {
+  try {
+    const backup = {format: backupFormat, version: backupVersion, tasks: readTasks()};
+    const file = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"});
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "rhythm-" + dateKey(new Date()) + ".json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showBackupStatus("Копия скачивается. Дел в файле: " + backup.tasks.length + ".");
+  } catch {
+    showBackupStatus("Не удалось прочитать планы для копии.", true);
+  }
+});
+byId("import-backup").addEventListener("click", () => backupFile.click());
+backupFile.addEventListener("change", async () => {
+  const [file] = backupFile.files;
+  backupFile.value = "";
+  if (!file) return;
+  let imported;
+  try {
+    imported = restoreBackup(await file.text());
+  } catch {
+    showBackupStatus("Не удалось загрузить файл. Выбери JSON-копию, скачанную из «Ритма».", true);
+    return;
+  }
+  let added = 0;
+  if (!save(previous => {
+    const knownIds = new Set(previous.map(task => task.id));
+    const additions = imported.filter(task => {
+      if (knownIds.has(task.id)) return false;
+      knownIds.add(task.id);
+      return true;
+    });
+    added = additions.length;
+    return previous.concat(additions);
+  })) {
+    showBackupStatus("Не удалось сохранить дела в этом браузере.", true);
+    return;
+  }
+  render();
+  showBackupStatus("Добавлено дел: " + added + ". Уже были в календаре: " + (imported.length - added) + ".");
 });
 
 function load() {

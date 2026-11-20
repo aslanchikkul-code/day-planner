@@ -11,14 +11,32 @@
   <div class="app">
     <header class="topbar">
       <div class="brand"><span class="brand-icon" aria-hidden="true">▦</span><div><strong>Ритм</strong><span>Личный планировщик</span></div></div>
-      <button id="add-task" class="primary" type="button"><span aria-hidden="true">＋</span> Новое дело</button>
+      <div class="topbar-actions">
+        <button id="open-backup" class="secondary" type="button">Резервная копия</button>
+        <button id="add-task" class="primary" type="button"><span aria-hidden="true">＋</span> Новое дело</button>
+      </div>
     </header>
 
     <main>
       <section class="workspace" aria-labelledby="page-title">
+        <div class="workspace-toolbar">
+          <nav class="section-nav" aria-label="Разделы планировщика">
+            <button id="show-calendar" type="button" aria-pressed="true">Календарь</button>
+            <button id="show-completed" type="button" aria-pressed="false">Выполнено</button>
+          </nav>
+          <div id="search-area" class="search-box">
+            <label for="task-search" class="screen-reader">Поиск по делам</label>
+            <input id="task-search" type="search" placeholder="Найти дело по названию" autocomplete="off" aria-controls="search-panel">
+            <section id="search-panel" class="panel search-panel" aria-labelledby="search-label" hidden>
+              <h2 id="search-label">Результаты поиска</h2>
+              <p id="search-empty" role="status" hidden>Совпадений по этому запросу нет.</p>
+              <ul id="search-results" class="result-list"></ul>
+            </section>
+          </div>
+        </div>
         <div class="intro">
           <div><h1 id="page-title">Мой календарь</h1><p id="calendar-range"></p></div>
-          <div class="calendar-controls">
+          <div id="calendar-controls" class="calendar-controls">
           <div class="view-toggle" aria-label="Вид календаря">
             <button id="week-view" type="button" aria-pressed="true">Неделя</button>
             <button id="month-view" type="button" aria-pressed="false">Месяц</button>
@@ -27,7 +45,7 @@
           </div>
         </div>
 
-        <div class="layout">
+        <div id="calendar-layout" class="layout">
           <section class="calendar panel" aria-labelledby="calendar-title">
             <header class="calendar-bar">
               <h2 id="calendar-title"></h2>
@@ -50,11 +68,29 @@
             <div id="timeline" class="timeline" tabindex="0" aria-label="Распорядок по часам"></div>
           </section>
         </div>
+        <section id="completed-panel" class="panel completed-panel" aria-label="Список выполненных дел" hidden>
+          <p id="completed-empty">Выполненные дела появятся здесь после отметки в расписании.</p>
+          <ul id="completed-results" class="result-list"></ul>
+        </section>
         <p id="notice" role="status" class="screen-reader"></p>
       </section>
     </main>
     <footer>Планы сохраняются в этом браузере</footer>
   </div>
+
+  <dialog id="backup-dialog" aria-labelledby="backup-title">
+    <div class="dialog-heading">
+      <h2 id="backup-title">Резервная копия</h2>
+      <button id="close-backup" type="button" class="icon-button" aria-label="Закрыть">×</button>
+    </div>
+    <p>Скачай свои планы в файл или добавь дела из ранее сохранённой копии.</p>
+    <div class="backup-actions">
+      <button id="export-backup" class="primary" type="button">Скачать копию</button>
+      <button id="import-backup" class="secondary" type="button">Загрузить копию</button>
+      <input id="backup-file" type="file" accept=".json,application/json" hidden>
+    </div>
+    <p id="backup-status" role="status" hidden></p>
+  </dialog>
 
   <dialog id="task-dialog" aria-labelledby="dialog-title">
     <form id="task-form">
