@@ -9,6 +9,11 @@ const titleInput = byId("task-title");
 const dateInput = byId("task-date");
 const timeInput = byId("task-time");
 const repeatInput = byId("task-repeat");
+const durationInput = byId("task-duration");
+const importantInput = byId("task-important");
+const importantFilter = byId("important-only");
+const defaultDuration = 30;
+const minutesPerDay = 24 * 60;
 const weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const fullDate = new Intl.DateTimeFormat("ru-RU", {weekday: "long", day: "numeric", month: "long"});
 const shortDate = new Intl.DateTimeFormat("ru-RU", {day: "numeric", month: "short"});
@@ -16,9 +21,29 @@ const monthYear = new Intl.DateTimeFormat("ru-RU", {month: "long", year: "numeri
 const pad = number => String(number).padStart(2, "0");
 const capitalize = value => value.charAt(0).toUpperCase() + value.slice(1);
 
+function timeInMinutes(time) {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+function durationOf(task) {
+  return task.duration ?? defaultDuration;
+}
+
+function clockTime(minutes) {
+  const withinDay = minutes % minutesPerDay;
+  return pad(Math.floor(withinDay / 60)) + ":" + pad(withinDay % 60);
+}
+
+function timeRange(task) {
+  const end = timeInMinutes(task.time) + durationOf(task);
+  return task.time + "–" + clockTime(end) + (end >= minutesPerDay ? " (+1 день)" : "");
+}
+
 let tasks = [];
 let selected = dateKey(new Date());
 let view = "week";
+let importantOnly = false;
 let editingTask = null;
 
 function dateKey(date) {
@@ -106,6 +131,44 @@ function tasksFor(key) {
   return entries.sort((a, b) => a.time.localeCompare(b.time));
 }
 
+function visibleTasksFor(key) {
+  const entries = tasksFor(key);
+  return importantOnly ? entries.filter(task => task.important) : entries;
+}
+
+function showConflicts() {
+  const warning = byId("task-conflict");
+  const date = dateInput.value;
+  const time = timeInput.value;
+  const duration = durationInput.valueAsNumber;
+  if (!date || !time || !durationInput.validity.valid || !Number.isInteger(duration)) {
+    warning.hidden = true;
+    warning.textContent = "";
+    return;
+  }
+
+  const start = timeInMinutes(time);
+  const end = start + duration;
+  const day = atDate(date);
+  const overlapping = new Set();
+  for (const offset of [-1, 0, 1]) {
+    for (const task of tasksFor(dateKey(plusDays(day, offset)))) {
+      if (task.id === editingTask?.id) continue;
+      const otherStart = offset * minutesPerDay + timeInMinutes(task.time);
+      const otherEnd = otherStart + durationOf(task);
+      if (start < otherEnd && otherStart < end) overlapping.add(task.title);
+    }
+  }
+  warning.hidden = overlapping.size === 0;
+  warning.textContent = overlapping.size
+    ? "Пересекается с делами: " + [...overlapping].map(title => "«" + title + "»").join(", ") + ". Можно сохранить."
+    : "";
+}
+
+for (const input of [dateInput, timeInput, durationInput]) {
+  input.addEventListener("input", showConflicts);
+}
+
 function patchOccurrence(tasks, instance, changes) {
   return tasks.map(task => {
     if (task.id !== instance.seriesId) return task;
@@ -148,7 +211,7 @@ function renderCalendar() {
   grid.replaceChildren(...weekdays.map(day => element("div", "weekday", day)));
   for (let day = start; day <= end; day = plusDays(day, 1)) {
     const key = dateKey(day);
-    const entries = tasksFor(key);
+    const entries = visibleTasksFor(key);
     const button = element("button", "calendar-day");
     button.type = "button";
     button.dataset.date = key;
@@ -162,7 +225,10 @@ function renderCalendar() {
     content.append(element("span", "day-number", day.getDate()));
     const previewLimit = isWeek ? 6 : 2;
     for (const task of entries.slice(0, previewLimit)) {
-      const preview = element("span", "day-preview", task.time + " " + task.title);
+      const preview = element("span", "day-preview");
+      preview.classList.toggle("important", Boolean(task.important));
+      if (task.important) preview.append(element("span", "important-star", "★ "));
+      preview.append(task.time + " " + task.title);
       preview.classList.toggle("done", task.done);
       content.append(preview);
     }
@@ -181,6 +247,7 @@ function renderCalendar() {
 
 function taskRow(task) {
   const row = element("div", task.done ? "task done" : "task");
+  row.classList.toggle("important", Boolean(task.important));
   const check = element("input");
   check.type = "checkbox";
   check.checked = task.done;
@@ -201,19 +268,33 @@ function taskRow(task) {
   const edit = element("button");
   edit.type = "button";
   edit.title = "Изменить или перенести";
-  edit.setAttribute("aria-label", "Изменить или перенести «" + task.title + "»");
-  const time = task.seriesId ? task.time + " · " + (task.repeat === "daily" ? "Ежедневно" : "Еженедельно") : task.time;
-  edit.append(element("time", "", time), element("span", "task-name", task.title));
+  edit.setAttribute("aria-label", (task.important ? "Важное дело. " : "") + "Изменить или перенести «" + task.title + "»");
+  const recurrence = task.seriesId ? " · " + (task.repeat === "daily" ? "Ежедневно" : "Еженедельно") : "";
+  const time = timeRange(task) + recurrence;
+  edit.append(element("time", "", time));
+  if (task.important) {
+    const star = element("span", "important-star", "★ ");
+    star.setAttribute("aria-hidden", "true");
+    edit.append(star);
+  }
+  edit.append(element("span", "task-name", task.title));
   edit.addEventListener("click", () => openTask(task));
   row.append(check, edit);
   return row;
 }
 
 function renderAgenda(scroll, targetHour) {
-  const entries = tasksFor(selected);
+  const entries = visibleTasksFor(selected);
+  const previousDay = dateKey(plusDays(atDate(selected), -1));
+  const earlier = visibleTasksFor(previousDay).filter(task => timeInMinutes(task.time) + durationOf(task) > minutesPerDay);
+  const intervals = [
+    ...earlier.map(task => ({task, start: timeInMinutes(task.time) - minutesPerDay})),
+    ...entries.map(task => ({task, start: timeInMinutes(task.time)}))
+  ];
   const done = entries.filter(task => task.done).length;
   byId("day-title").textContent = capitalize(fullDate.format(atDate(selected)));
-  byId("day-summary").textContent = entries.length ? "Выполнено " + done + " из " + entries.length : "Пока нет дел";
+  byId("day-summary").textContent = entries.length ? "Выполнено " + done + " из " + entries.length
+    : earlier.length ? "Есть дела с прошлого дня" : importantOnly ? "Важных дел на этот день нет" : "Пока нет дел";
 
   const previousScroll = timeline.scrollTop;
   timeline.replaceChildren();
@@ -222,8 +303,17 @@ function renderAgenda(scroll, targetHour) {
     const hourRow = element("div", "hour-row");
     hourRow.dataset.hour = hour;
     const content = element("div", "hour-content");
-    for (const task of entries.filter(task => Number(task.time.slice(0, 2)) === hour)) {
-      content.append(taskRow(task));
+    const hourStart = hour * 60;
+    for (const {task, start} of intervals) {
+      const end = start + durationOf(task);
+      if (start >= hourStart + 60 || end <= hourStart) continue;
+      hourRow.classList.add("occupied");
+      if (start >= hourStart) {
+        content.append(taskRow(task));
+      } else {
+        const endLabel = end >= minutesPerDay ? "до полуночи" : "до " + clockTime(end);
+        content.append(element("p", "hour-continuation", task.title + " · " + endLabel));
+      }
     }
     const add = element("button", "hour-add", "+");
     add.type = "button";
@@ -234,7 +324,7 @@ function renderAgenda(scroll, targetHour) {
     timeline.append(hourRow);
   }
   if (scroll) {
-    const hour = targetHour ?? (entries.length ? Number(entries[0].time.slice(0, 2)) : 8);
+    const hour = targetHour ?? (earlier.length ? 0 : entries.length ? Number(entries[0].time.slice(0, 2)) : 8);
     const row = timeline.children[hour];
     timeline.scrollTop = row.offsetTop - timeline.children[0].offsetTop;
   } else {
@@ -284,6 +374,9 @@ function openTask(task, time = "09:00") {
   titleInput.value = task?.title || "";
   dateInput.value = task?.date || selected;
   timeInput.value = task?.time || time;
+  durationInput.value = task ? durationOf(task) : defaultDuration;
+  importantInput.checked = task ? Boolean(task.important) : importantOnly;
+  showConflicts();
   dialog.showModal();
   titleInput.focus();
 }
@@ -300,7 +393,7 @@ byId("task-form").addEventListener("submit", event => {
   }
   const date = dateInput.value;
   const time = timeInput.value;
-  const fields = {title, date, time};
+  const fields = {title, date, time, duration: durationInput.valueAsNumber, important: importantInput.checked};
   const task = editingTask;
   const moved = task && (task.date !== date || task.time !== time);
   if (!save(previous => {
@@ -359,6 +452,12 @@ for (const mode of ["week", "month"]) {
     render(true);
   });
 }
+importantFilter.addEventListener("click", () => {
+  importantOnly = !importantOnly;
+  importantFilter.setAttribute("aria-pressed", importantOnly);
+  render(true);
+});
+
 function load() {
   try {
     tasks = readTasks();
@@ -370,6 +469,7 @@ window.addEventListener("storage", event => {
   if (event.key === storageKey || event.key === null) {
     load();
     render();
+    if (dialog.open) showConflicts();
   }
 });
 load();

@@ -18,9 +18,12 @@
       <section class="workspace" aria-labelledby="page-title">
         <div class="intro">
           <div><h1 id="page-title">Мой календарь</h1><p id="calendar-range"></p></div>
+          <div class="calendar-controls">
           <div class="view-toggle" aria-label="Вид календаря">
             <button id="week-view" type="button" aria-pressed="true">Неделя</button>
             <button id="month-view" type="button" aria-pressed="false">Месяц</button>
+          </div>
+          <button id="important-only" class="secondary important-filter" type="button" aria-pressed="false"><span aria-hidden="true">★</span> Только важные</button>
           </div>
         </div>
 
@@ -64,6 +67,10 @@
         <label class="field">Дата<input id="task-date" type="date" required></label>
         <label class="field">Время<input id="task-time" type="time" required></label>
       </div>
+      <label class="field">Длительность, мин
+        <input id="task-duration" type="number" min="1" max="1440" step="1" value="30" required>
+      </label>
+      <p id="task-conflict" class="conflict" role="status" hidden></p>
       <label id="repeat-field" class="field">Повтор
         <select id="task-repeat">
           <option value="">Без повтора</option>
@@ -71,6 +78,7 @@
           <option value="weekly">Каждую неделю</option>
         </select>
       </label>
+      <label class="important-option"><input id="task-important" type="checkbox"> Важно</label>
       <div id="series-controls" hidden>
         <p class="series-note">Изменения относятся только к этому делу.</p>
         <button id="end-series" class="secondary" type="button">Прекратить повтор после этого дела</button>
