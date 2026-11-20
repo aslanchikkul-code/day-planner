@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ритм — личный планировщик</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="brand-icon" aria-hidden="true">▦</span><div><strong>Ритм</strong><span>Личный планировщик</span></div></div>
+      <button id="add-task" class="primary" type="button"><span aria-hidden="true">＋</span> Новое дело</button>
+    </header>
+
+    <main>
+      <section class="workspace" aria-labelledby="page-title">
+        <div class="intro">
+          <div><h1 id="page-title">Мой календарь</h1><p id="calendar-range"></p></div>
+          <div class="view-toggle" aria-label="Вид календаря">
+            <button id="week-view" type="button" aria-pressed="true">Неделя</button>
+            <button id="month-view" type="button" aria-pressed="false">Месяц</button>
+          </div>
+        </div>
+
+        <div class="layout">
+          <section class="calendar panel" aria-labelledby="calendar-title">
+            <header class="calendar-bar">
+              <h2 id="calendar-title"></h2>
+              <div class="navigation">
+                <button id="previous" type="button" class="icon-button" aria-label="Предыдущий период">‹</button>
+                <button id="today" type="button" class="secondary">Сегодня</button>
+                <button id="next" type="button" class="icon-button" aria-label="Следующий период">›</button>
+              </div>
+            </header>
+            <div class="calendar-scroll" tabindex="0" aria-label="Календарь">
+              <div id="date-grid"></div>
+            </div>
+          </section>
+
+          <section class="agenda panel" aria-labelledby="day-title">
+            <header class="agenda-bar">
+              <div><h2 id="day-title"></h2><p id="day-summary"></p></div>
+              <button id="add-day-task" type="button" class="icon-button" aria-label="Добавить дело на выбранный день">＋</button>
+            </header>
+            <div id="timeline" class="timeline" tabindex="0" aria-label="Распорядок по часам"></div>
+          </section>
+        </div>
+        <p id="notice" role="status" class="screen-reader"></p>
+      </section>
+    </main>
+    <footer>Планы сохраняются в этом браузере</footer>
+  </div>
+
+  <dialog id="task-dialog" aria-labelledby="dialog-title">
+    <form id="task-form">
+      <div class="dialog-heading">
+        <h2 id="dialog-title">Новое дело</h2>
+        <button id="close-dialog" type="button" class="icon-button" aria-label="Закрыть">×</button>
+      </div>
+      <label class="field">Название<input id="task-title" type="text" maxlength="120" placeholder="Например, прогулка" required></label>
+      <div class="form-row">
+        <label class="field">Дата<input id="task-date" type="date" required></label>
+        <label class="field">Время<input id="task-time" type="time" required></label>
+      </div>
+      <p id="form-error" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button id="delete-task" class="danger" type="button" hidden>Удалить</button>
+        <button id="cancel-dialog" class="secondary" type="button">Отмена</button>
+        <button class="primary" type="submit">Сохранить</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
