@@ -8,6 +8,7 @@ const dialog = byId("task-dialog");
 const titleInput = byId("task-title");
 const dateInput = byId("task-date");
 const timeInput = byId("task-time");
+const repeatInput = byId("task-repeat");
 const weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const fullDate = new Intl.DateTimeFormat("ru-RU", {weekday: "long", day: "numeric", month: "long"});
 const shortDate = new Intl.DateTimeFormat("ru-RU", {day: "numeric", month: "short"});
@@ -18,7 +19,7 @@ const capitalize = value => value.charAt(0).toUpperCase() + value.slice(1);
 let tasks = [];
 let selected = dateKey(new Date());
 let view = "week";
-let editingId = null;
+let editingTask = null;
 
 function dateKey(date) {
   return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
@@ -73,8 +74,47 @@ function save(change) {
   }
 }
 
+function repeatsOn(task, key) {
+  return key >= task.date && (!task.until || key <= task.until) &&
+    (task.repeat === "daily" || atDate(key).getDay() === atDate(task.date).getDay());
+}
+
+function occurrence(task, key, patch = {}) {
+  return {...task, date: key, done: false, ...patch, id: task.id + "@" + key, seriesId: task.id, seriesDate: key};
+}
+
 function tasksFor(key) {
-  return tasks.filter(task => task.date === key).sort((a, b) => a.time.localeCompare(b.time));
+  const entries = [];
+  for (const task of tasks) {
+    if (!task.repeat) {
+      if (task.date === key) entries.push(task);
+      continue;
+    }
+    const patches = task.occurrences || {};
+    const todayPatch = patches[key];
+    if (repeatsOn(task, key) && !todayPatch?.deleted && (!todayPatch?.date || todayPatch.date === key)) {
+      entries.push(occurrence(task, key, todayPatch));
+    }
+
+    // A rescheduled occurrence keeps its original date as its identifier.
+    for (const [original, patch] of Object.entries(patches)) {
+      if (original !== key && patch.date === key && !patch.deleted && repeatsOn(task, original)) {
+        entries.push(occurrence(task, original, patch));
+      }
+    }
+  }
+  return entries.sort((a, b) => a.time.localeCompare(b.time));
+}
+
+function patchOccurrence(tasks, instance, changes) {
+  return tasks.map(task => {
+    if (task.id !== instance.seriesId) return task;
+    const occurrences = task.occurrences || {};
+    return {...task, occurrences: {
+      ...occurrences,
+      [instance.seriesDate]: {...occurrences[instance.seriesDate], ...changes}
+    }};
+  });
 }
 
 function element(tag, className, text) {
@@ -148,7 +188,9 @@ function taskRow(task) {
   check.setAttribute("aria-label", "Выполнено: " + task.title);
   check.addEventListener("change", () => {
     const done = check.checked;
-    if (!save(previous => previous.map(entry => entry.id === task.id ? {...entry, done} : entry))) {
+    if (!save(previous => task.seriesId
+      ? patchOccurrence(previous, task, {done})
+      : previous.map(entry => entry.id === task.id ? {...entry, done} : entry))) {
       check.checked = !done;
       return;
     }
@@ -160,7 +202,8 @@ function taskRow(task) {
   edit.type = "button";
   edit.title = "Изменить или перенести";
   edit.setAttribute("aria-label", "Изменить или перенести «" + task.title + "»");
-  edit.append(element("time", "", task.time), element("span", "task-name", task.title));
+  const time = task.seriesId ? task.time + " · " + (task.repeat === "daily" ? "Ежедневно" : "Еженедельно") : task.time;
+  edit.append(element("time", "", time), element("span", "task-name", task.title));
   edit.addEventListener("click", () => openTask(task));
   row.append(check, edit);
   return row;
@@ -228,7 +271,13 @@ function movePeriod(direction) {
 }
 
 function openTask(task, time = "09:00") {
-  editingId = task?.id || null;
+  editingTask = task;
+  byId("repeat-field").hidden = Boolean(task);
+  repeatInput.value = "";
+  byId("series-controls").hidden = !task?.seriesId;
+  const endSeries = byId("end-series");
+  endSeries.hidden = !task?.seriesId || Boolean(task.until && task.seriesDate >= task.until);
+  byId("delete-task").textContent = task?.seriesId ? "Удалить это дело" : "Удалить";
   byId("dialog-title").textContent = task ? "Изменить или перенести дело" : "Новое дело";
   byId("delete-task").hidden = !task;
   byId("form-error").hidden = true;
@@ -252,11 +301,15 @@ byId("task-form").addEventListener("submit", event => {
   const date = dateInput.value;
   const time = timeInput.value;
   const fields = {title, date, time};
-  const id = editingId;
-  const moved = id && tasks.some(task => task.id === id && (task.date !== date || task.time !== time));
-  if (!save(previous => id
-    ? previous.map(task => task.id === id ? {...task, ...fields} : task)
-    : [...previous, {id: crypto.randomUUID(), ...fields, done: false}])) return;
+  const task = editingTask;
+  const moved = task && (task.date !== date || task.time !== time);
+  if (!save(previous => {
+    if (task?.seriesId) return patchOccurrence(previous, task, fields);
+    if (task) return previous.map(entry => entry.id === task.id ? {...entry, ...fields} : entry);
+    const newTask = {id: crypto.randomUUID(), ...fields, done: false};
+    if (repeatInput.value) newTask.repeat = repeatInput.value;
+    return [...previous, newTask];
+  })) return;
   dialog.close();
   selected = date;
   render(true, Number(time.slice(0, 2)));
@@ -265,11 +318,27 @@ byId("task-form").addEventListener("submit", event => {
 });
 
 byId("delete-task").addEventListener("click", () => {
-  if (!editingId || !save(previous => previous.filter(task => task.id !== editingId))) return;
+  if (!editingTask) return;
+  const task = editingTask;
+  if (!save(previous => task.seriesId
+    ? patchOccurrence(previous, task, {deleted: true})
+    : previous.filter(entry => entry.id !== task.id))) return;
   dialog.close();
   render();
   byId("add-day-task").focus({preventScroll: true});
   announce("Дело удалено.");
+});
+
+byId("end-series").addEventListener("click", () => {
+  const task = editingTask;
+  if (!task?.seriesId || !confirm("Прекратить повтор после этого дела?")) return;
+  if (!save(previous => previous.map(entry => entry.id === task.seriesId
+    ? {...entry, until: entry.until && entry.until < task.seriesDate ? entry.until : task.seriesDate}
+    : entry))) return;
+  dialog.close();
+  render();
+  byId("add-day-task").focus({preventScroll: true});
+  announce("Повтор завершён.");
 });
 
 for (const id of ["close-dialog", "cancel-dialog"]) {
