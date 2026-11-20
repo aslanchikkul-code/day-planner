@@ -23,6 +23,7 @@
           <nav class="section-nav" aria-label="Разделы планировщика">
             <button id="show-calendar" type="button" aria-pressed="true">Календарь</button>
             <button id="show-completed" type="button" aria-pressed="false">Выполнено</button>
+            <button id="show-overdue" type="button" aria-pressed="false">Просрочено</button>
           </nav>
           <div id="search-area" class="search-box">
             <label for="task-search" class="screen-reader">Поиск по делам</label>
@@ -71,6 +72,11 @@
         <section id="completed-panel" class="panel completed-panel" aria-label="Список выполненных дел" hidden>
           <p id="completed-empty">Выполненные дела появятся здесь после отметки в расписании.</p>
           <ul id="completed-results" class="result-list"></ul>
+        </section>
+        <section id="overdue-panel" class="panel completed-panel" aria-label="Список просроченных дел" hidden>
+          <p id="overdue-empty">Просроченных дел нет.</p>
+          <ul id="overdue-results" class="result-list"></ul>
+          <button id="more-overdue" class="secondary" type="button" hidden>Показать ещё</button>
         </section>
         <p id="notice" role="status" class="screen-reader"></p>
       </section>

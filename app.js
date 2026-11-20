@@ -46,7 +46,9 @@ let tasks = [];
 let selected = dateKey(new Date());
 let view = "week";
 let importantOnly = false;
-let completedView = false;
+let activeSection = "calendar";
+const overduePageSize = 50;
+let overdueLimit = overduePageSize;
 let editingTask = null;
 
 function dateKey(date) {
@@ -285,6 +287,12 @@ function renderCalendar() {
   }
 }
 
+function setTaskDone(task, done) {
+  return save(previous => task.seriesId
+    ? patchOccurrence(previous, task, {done})
+    : previous.map(entry => entry.id === task.id ? {...entry, done} : entry));
+}
+
 function taskRow(task) {
   const row = element("div", task.done ? "task done" : "task");
   row.classList.toggle("important", Boolean(task.important));
@@ -295,9 +303,7 @@ function taskRow(task) {
   check.setAttribute("aria-label", "Выполнено: " + task.title);
   check.addEventListener("change", () => {
     const done = check.checked;
-    if (!save(previous => task.seriesId
-      ? patchOccurrence(previous, task, {done})
-      : previous.map(entry => entry.id === task.id ? {...entry, done} : entry))) {
+    if (!setTaskDone(task, done)) {
       check.checked = !done;
       return;
     }
@@ -378,7 +384,7 @@ const searchPanel = byId("search-panel");
 
 function showOnCalendar(task) {
   clearSearch();
-  completedView = false;
+  activeSection = "calendar";
   if (importantOnly && !task.important) {
     importantOnly = false;
     importantFilter.setAttribute("aria-pressed", "false");
@@ -393,6 +399,7 @@ function resultRow(task) {
   const row = element("li");
   const button = element("button", "result-row");
   button.type = "button";
+  button.dataset.taskId = task.id;
   button.addEventListener("click", () => showOnCalendar(task));
   const text = element("span", "result-text");
   const title = element("strong", "", task.title);
@@ -401,7 +408,9 @@ function resultRow(task) {
   const detail = capitalize(fullDate.format(date)) + " " + date.getFullYear() + " · " + timeRange(task);
   const period = task.repeat ? task.repeat === "daily" ? " · Ежедневно" : " · Еженедельно" : "";
   text.append(title, element("span", "result-detail", detail + period));
-  const badge = element("span", task.done ? "result-badge done" : "result-badge", task.done ? "Выполнено" : "В плане");
+  const overdue = !task.done && task.date < dateKey(new Date());
+  const badge = element("span", task.done ? "result-badge done" : overdue ? "result-badge overdue" : "result-badge",
+    task.done ? "Выполнено" : overdue ? "Просрочено" : "В плане");
   button.append(text, badge);
   row.append(button);
   return row;
@@ -416,6 +425,69 @@ function renderCompleted() {
   byId("completed-results").replaceChildren(...completed.map(resultRow));
   byId("completed-empty").hidden = completed.length > 0;
 }
+
+function overdueTasks(today) {
+  const entries = recordedTasks().filter(task => !task.done && task.date < today);
+  for (const series of tasks) {
+    if (!series.repeat || series.date >= today) continue;
+    const step = series.repeat === "daily" ? 1 : 7;
+    const patches = series.occurrences || {};
+    let day = series.until && series.until < today ? atDate(series.until) : plusDays(atDate(today), -1);
+    if (step === 7) {
+      day = plusDays(day, -((day.getDay() - atDate(series.date).getDay() + 7) % 7));
+    }
+    // The newest entries from each series are enough to fill the visible list.
+    let count = 0;
+    while (dateKey(day) >= series.date && count <= overdueLimit) {
+      const key = dateKey(day);
+      if (!Object.hasOwn(patches, key)) {
+        entries.push(occurrence(series, key));
+        count++;
+      }
+      day = plusDays(day, -step);
+    }
+  }
+  return entries.sort((a, b) => compareByDate(b, a));
+}
+
+function overdueRow(task) {
+  const row = resultRow(task);
+  const controls = element("div", "overdue-actions");
+  const done = element("button", "secondary", "Отметить выполненным");
+  done.type = "button";
+  done.setAttribute("aria-label", "Отметить выполненным: " + task.title);
+  done.addEventListener("click", () => {
+    if (!setTaskDone(task, true)) return;
+    const next = row.nextElementSibling?.querySelector(".result-row");
+    const nextTitle = next?.dataset.taskId;
+    render();
+    const rows = byId("overdue-results").querySelectorAll("[data-task-id]");
+    const focus = [...rows].find(button => button.dataset.taskId === nextTitle) || rows[0] || byId("show-overdue");
+    focus.focus({preventScroll: true});
+    announce("Дело перемещено в раздел «Выполнено».");
+  });
+  const move = element("button", "secondary", "Перенести");
+  move.type = "button";
+  move.setAttribute("aria-label", "Перенести: " + task.title);
+  move.addEventListener("click", () => openTask(task));
+  controls.append(done, move);
+  row.append(controls);
+  return row;
+}
+
+function renderOverdue() {
+  const entries = overdueTasks(dateKey(new Date()));
+  byId("overdue-results").replaceChildren(...entries.slice(0, overdueLimit).map(overdueRow));
+  byId("overdue-empty").hidden = entries.length > 0;
+  byId("more-overdue").hidden = entries.length <= overdueLimit;
+}
+
+byId("more-overdue").addEventListener("click", () => {
+  const firstNew = overdueLimit;
+  overdueLimit += overduePageSize;
+  renderOverdue();
+  byId("overdue-results").children[firstNew]?.querySelector(".result-row").focus();
+});
 
 function queryText(text) {
   return text.toLocaleLowerCase("ru").replaceAll("ё", "е");
@@ -460,26 +532,36 @@ byId("search-area").addEventListener("keydown", event => {
   }
 });
 
-function setCompletedView(value) {
-  completedView = value;
-  clearSearch();
-  render(!value);
+const sections = {
+  calendar: "Мой календарь",
+  completed: "Выполненные дела",
+  overdue: "Просроченные дела"
+};
+
+for (const section of Object.keys(sections)) {
+  byId("show-" + section).addEventListener("click", () => {
+    activeSection = section;
+    if (section === "overdue") overdueLimit = overduePageSize;
+    clearSearch();
+    render(section === "calendar");
+  });
 }
 
-byId("show-calendar").addEventListener("click", () => setCompletedView(false));
-byId("show-completed").addEventListener("click", () => setCompletedView(true));
-
 function render(scroll = false, targetHour) {
-  byId("show-calendar").setAttribute("aria-pressed", !completedView);
-  byId("show-completed").setAttribute("aria-pressed", completedView);
-  byId("page-title").textContent = completedView ? "Выполненные дела" : "Мой календарь";
-  byId("calendar-range").hidden = completedView;
-  byId("calendar-controls").hidden = completedView;
-  byId("calendar-layout").hidden = completedView;
-  byId("completed-panel").hidden = !completedView;
+  for (const section of Object.keys(sections)) {
+    byId("show-" + section).setAttribute("aria-pressed", section === activeSection);
+  }
+  const calendarActive = activeSection === "calendar";
+  byId("page-title").textContent = sections[activeSection];
+  byId("calendar-range").hidden = !calendarActive;
+  byId("calendar-controls").hidden = !calendarActive;
+  byId("calendar-layout").hidden = !calendarActive;
+  byId("completed-panel").hidden = activeSection !== "completed";
+  byId("overdue-panel").hidden = activeSection !== "overdue";
   renderSearch();
-  if (completedView) {
-    renderCompleted();
+  if (!calendarActive) {
+    if (activeSection === "completed") renderCompleted();
+    else renderOverdue();
     return;
   }
   renderCalendar();
@@ -554,9 +636,9 @@ byId("task-form").addEventListener("submit", event => {
   })) return;
   dialog.close();
   selected = date;
-  completedView = false;
+  if (!task || activeSection !== "overdue") activeSection = "calendar";
   render(true, Number(time.slice(0, 2)));
-  byId("add-day-task").focus({preventScroll: true});
+  byId(activeSection === "overdue" ? "show-overdue" : "add-day-task").focus({preventScroll: true});
   announce(moved ? "Дело перенесено." : "Дело сохранено.");
 });
 
@@ -568,7 +650,7 @@ byId("delete-task").addEventListener("click", () => {
     : previous.filter(entry => entry.id !== task.id))) return;
   dialog.close();
   render();
-  byId("add-day-task").focus({preventScroll: true});
+  byId(activeSection === "overdue" ? "show-overdue" : "add-day-task").focus({preventScroll: true});
   announce("Дело удалено.");
 });
 
@@ -580,7 +662,7 @@ byId("end-series").addEventListener("click", () => {
     : entry))) return;
   dialog.close();
   render();
-  byId("add-day-task").focus({preventScroll: true});
+  byId(activeSection === "overdue" ? "show-overdue" : "add-day-task").focus({preventScroll: true});
   announce("Повтор завершён.");
 });
 
@@ -735,5 +817,25 @@ window.addEventListener("storage", event => {
     if (dialog.open) showConflicts();
   }
 });
+let midnightTimer;
+function scheduleDayChange() {
+  clearTimeout(midnightTimer);
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0);
+  midnightTimer = setTimeout(() => {
+    render();
+    scheduleDayChange();
+  }, midnight - now);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    render();
+    scheduleDayChange();
+  }
+});
+
 load();
 render(true);
+scheduleDayChange();

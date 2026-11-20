@@ -165,6 +165,10 @@ body {
 .result-detail { font-size: .875rem; color: var(--muted); }
 .result-badge { flex-shrink: 0; padding: 3px 7px; border-radius: 16px; font-size: .875rem; color: #543496; background: #eee5ff; }
 .result-badge.done { color: #285744; background: #e7f4eb; }
+.result-badge.overdue { color: #8c2638; background: #ffedf2; }
+.overdue-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 7px 9px; }
+.overdue-actions button { font-size: .875rem; }
+#more-overdue { margin: 8px 7px; }
 .completed-panel { padding: 9px 15px; }
 .intro { margin-bottom: 12px; gap: 10px; }
 h1 { font-size: clamp(1.65rem, 3vw, 2.3rem); }
@@ -200,7 +204,7 @@ footer { padding-bottom: 12px; }
   .topbar .secondary, .topbar .primary { font-size: .875rem; }
   .workspace { padding-top: 10px; }
   .workspace-toolbar { align-items: stretch; flex-direction: column; gap: 7px; margin-bottom: 10px; }
-  .section-nav { align-self: flex-start; }
+  .section-nav { align-self: flex-start; flex-wrap: wrap; }
   .search-box, .search-panel { width: 100%; }
   .week-grid .calendar-day { min-height: 155px; }
   .timeline { max-height: 320px; }
