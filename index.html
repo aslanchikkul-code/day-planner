@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ритм — личный планировщик</title>
-  <link rel="stylesheet" href="style.css?v=mobile-month-grid">
-  <script src="app.js?v=calendar-position" defer></script>
+  <link rel="stylesheet" href="style.css?v=weather-forecast">
+  <script src="app.js?v=weather-forecast" defer></script>
 </head>
 <body>
   <div class="app">
@@ -76,6 +76,16 @@
               <div><h2 id="day-title"></h2><p id="day-summary"></p></div>
               <button id="add-day-task" type="button" class="icon-button" aria-label="Добавить дело на выбранный день">＋</button>
             </header>
+            <section class="weather" aria-labelledby="weather-title">
+              <div class="weather-top"><h3 id="weather-title">Погода на выбранный день</h3><span id="weather-place"></span></div>
+              <form id="weather-city-form" class="weather-form">
+                <label class="screen-reader" for="weather-city">Город для прогноза</label>
+                <input id="weather-city" type="search" placeholder="Город" required autocomplete="address-level2">
+                <button class="secondary" type="submit">Найти</button>
+              </form>
+              <p id="weather-details" role="status">Загружаю прогноз…</p>
+              <small>Прогноз: <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a></small>
+            </section>
             <div id="timeline" class="timeline" tabindex="0" aria-label="Распорядок по часам"></div>
           </section>
         </div>

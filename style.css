@@ -80,6 +80,15 @@ h2 { margin: 0; font-size: 1.15rem; }
 .day-more { color: var(--muted); font-size: .875rem; }
 .agenda-bar p { font-size: .875rem; }
 .agenda-bar .icon-button { color: var(--violet); background: var(--pale); }
+.weather { padding: 14px 18px; border-bottom: 1px solid var(--line); background: #f8f5ff; }
+.weather-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.weather h3 { margin: 0; font-size: 1rem; }
+#weather-place, .weather small { color: var(--muted); font-size: .8rem; }
+.weather-form { display: flex; gap: 7px; margin-top: 10px; }
+.weather-form input { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid #c5c9e1; border-radius: 9px; background: white; }
+.weather-form button { min-height: 36px; padding: 6px 10px; }
+#weather-details { margin: 10px 0 5px; line-height: 1.4; overflow-wrap: anywhere; }
+.weather a { color: var(--violet); }
 .timeline { max-height: 480px; min-height: 374px; overflow-y: auto; }
 .hour-row { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 8px; min-height: 48px; margin: 0 14px; border-bottom: 1px solid var(--line); align-items: start; padding: 7px 0; }
 .hour-row.occupied { border-left: 3px solid #a797ec; padding-left: 7px; }

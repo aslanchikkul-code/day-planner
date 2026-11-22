@@ -20,6 +20,23 @@ const repeatInput = byId("task-repeat");
 const durationInput = byId("task-duration");
 const importantInput = byId("task-important");
 const importantFilter = byId("important-only");
+const weatherCityInput = byId("weather-city");
+const weatherDetails = byId("weather-details");
+const weatherPlace = byId("weather-place");
+const weatherStorageKey = "rhythm-weather-city";
+const defaultWeatherCity = {name: "Москва", country: "Россия", latitude: 55.75, longitude: 37.62};
+let weatherCity = defaultWeatherCity;
+let weatherDaily = null;
+let weatherError = "";
+let weatherLoadedAt = 0;
+let weatherRequest = 0;
+try {
+  const savedCity = JSON.parse(localStorage.getItem(weatherStorageKey));
+  if (savedCity && typeof savedCity.name === "string" && Number.isFinite(savedCity.latitude) && Number.isFinite(savedCity.longitude)) {
+    weatherCity = savedCity;
+  }
+} catch { /* Use the default city if the saved choice is damaged. */ }
+weatherCityInput.value = weatherCity.name;
 const defaultDuration = 30;
 let settings = {defaultDuration};
 const minutesPerDay = 24 * 60;
@@ -78,6 +95,91 @@ function plusDays(date, count) {
   next.setDate(next.getDate() + count);
   return next;
 }
+
+function weatherDescription(code) {
+  if (code === 0) return "☀️ Ясно";
+  if (code <= 2) return "🌤️ Небольшая облачность";
+  if (code === 3) return "☁️ Облачно";
+  if (code <= 48) return "🌫️ Туман";
+  if (code <= 67) return "🌧️ Дождь";
+  if (code <= 77) return "❄️ Снег";
+  if (code <= 82) return "🌧️ Ливень";
+  if (code <= 86) return "❄️ Снегопад";
+  if (code >= 95) return "⛈️ Гроза";
+  return "Переменная погода";
+}
+
+function renderWeather() {
+  weatherPlace.textContent = weatherCity.name + (weatherCity.country ? ", " + weatherCity.country : "");
+  if (weatherError) {
+    weatherDetails.textContent = weatherError;
+    return;
+  }
+  if (!weatherDaily) {
+    weatherDetails.textContent = "Загружаю прогноз…";
+    return;
+  }
+  const index = weatherDaily.time.indexOf(selected);
+  if (index < 0 || index >= 15) {
+    weatherDetails.textContent = "Прогноз доступен на сегодня и следующие 14 дней.";
+    return;
+  }
+  const high = weatherDaily.temperature_2m_max[index];
+  const low = weatherDaily.temperature_2m_min[index];
+  const rain = weatherDaily.precipitation_probability_max[index];
+  weatherDetails.textContent = weatherDescription(weatherDaily.weather_code[index]) +
+    " · " + Math.round(low) + "…" + Math.round(high) + " °C" +
+    (rain == null ? "" : " · Осадки: " + rain + "%");
+}
+
+async function loadWeather() {
+  const request = ++weatherRequest;
+  weatherDaily = null;
+  weatherError = "";
+  renderWeather();
+  const params = new URLSearchParams({
+    latitude: String(weatherCity.latitude), longitude: String(weatherCity.longitude),
+    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+    forecast_days: "15", timezone: "auto"
+  });
+  try {
+    const response = await fetch("https://api.open-meteo.com/v1/forecast?" + params);
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const data = await response.json();
+    if (!Array.isArray(data.daily?.time)) throw new Error("Данные прогноза недоступны");
+    if (request !== weatherRequest) return;
+    weatherDaily = data.daily;
+    weatherLoadedAt = Date.now();
+  } catch {
+    if (request !== weatherRequest) return;
+    weatherError = "Не удалось загрузить погоду. Проверь интернет и обнови страницу.";
+  }
+  renderWeather();
+}
+
+byId("weather-city-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const name = weatherCityInput.value.trim();
+  if (!name) return;
+  weatherDetails.textContent = "Ищу город…";
+  try {
+    const params = new URLSearchParams({name, count: "1", language: "ru"});
+    const response = await fetch("https://geocoding-api.open-meteo.com/v1/search?" + params);
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const data = await response.json();
+    const place = data.results?.[0];
+    if (!place) {
+      weatherDetails.textContent = "Город не найден. Уточни название.";
+      return;
+    }
+    weatherCity = {name: place.name, country: place.country, latitude: place.latitude, longitude: place.longitude};
+    weatherCityInput.value = place.name;
+    localStorage.setItem(weatherStorageKey, JSON.stringify(weatherCity));
+    loadWeather();
+  } catch {
+    weatherDetails.textContent = "Не удалось найти город. Проверь интернет и попробуй снова.";
+  }
+});
 
 function monday(date) {
   return plusDays(date, -((date.getDay() + 6) % 7));
@@ -1008,6 +1110,7 @@ function render(scroll = false, targetHour) {
   }
   renderCalendar();
   renderAgenda(scroll, targetHour);
+  renderWeather();
   if (scroll) {
     const container = grid.parentElement;
     const active = grid.querySelector("[aria-pressed=true]");
@@ -1581,6 +1684,7 @@ function scheduleDayChange() {
   midnight.setHours(24, 0, 0, 0);
   midnightTimer = setTimeout(() => {
     render();
+    loadWeather();
     scheduleDayChange();
   }, midnight - now);
 }
@@ -1588,6 +1692,7 @@ function scheduleDayChange() {
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     render();
+    if (Date.now() - weatherLoadedAt > 60 * 60 * 1000) loadWeather();
     scheduleDayChange();
   }
 });
@@ -1595,4 +1700,5 @@ document.addEventListener("visibilitychange", () => {
 load();
 groupTrainingOnce();
 render(true);
+loadWeather();
 scheduleDayChange();
