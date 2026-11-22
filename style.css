@@ -260,7 +260,11 @@ h2 { font-size: 1rem; }
 .hour-add { width: 26px; height: 26px; }
 .task { padding: 3px 5px; background: #f2e9ff; }
 footer { padding-bottom: 12px; }
-@media (max-width: 850px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 850px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .calendar-bar { flex-wrap: wrap; }
+  #month-jump-form { flex: 1 1 100%; min-width: 0; flex-wrap: wrap; }
+}
 @media (max-width: 530px) {
   .app { padding-top: 9px; }
   .topbar { min-height: 0; padding: 8px 9px; gap: 7px; }
