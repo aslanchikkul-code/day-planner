@@ -480,6 +480,7 @@ function renderCalendar() {
   const firstOfMonth = new Date(date);
   firstOfMonth.setDate(1);
   const isWeek = view === "week";
+  byId("month-jump").value = dateKey(new Date(date.getFullYear(), date.getMonth(), 1)).slice(0, 7);
   const start = isWeek ? week : monday(firstOfMonth);
   const lastOfMonth = new Date(firstOfMonth);
   lastOfMonth.setMonth(lastOfMonth.getMonth() + 1, 0);
@@ -1314,6 +1315,15 @@ byId("today").addEventListener("click", () => {
   selected = dateKey(new Date());
   render(true);
 });
+byId("month-jump").addEventListener("change", event => {
+  if (!event.target.value) return;
+  const [year, month] = event.target.value.split("-").map(Number);
+  const day = atDate(selected).getDate();
+  const lastDay = new Date(year, month, 0).getDate();
+  selected = dateKey(new Date(year, month - 1, Math.min(day, lastDay)));
+  view = "month";
+  render(true);
+});
 for (const mode of ["week", "month"]) {
   byId(mode + "-view").addEventListener("click", () => {
     view = mode;
@@ -1327,20 +1337,24 @@ importantFilter.addEventListener("click", () => {
 });
 
 const settingsDialog = byId("settings-dialog");
-const settingsInput = byId("settings-duration");
+const settingsHours = byId("settings-hours");
+const settingsMinutes = byId("settings-minutes");
 
 byId("open-settings").addEventListener("click", () => {
-  settingsInput.value = settings.defaultDuration;
+  settingsHours.value = Math.floor(settings.defaultDuration / 60);
+  settingsMinutes.value = settings.defaultDuration % 60;
   byId("settings-status").textContent = "";
   settingsDialog.showModal();
-  settingsInput.focus();
+  settingsHours.focus();
 });
 byId("close-settings").addEventListener("click", () => settingsDialog.close());
 byId("settings-form").addEventListener("submit", event => {
   event.preventDefault();
-  const duration = settingsInput.valueAsNumber;
+  const hours = settingsHours.valueAsNumber;
+  const minutes = settingsMinutes.valueAsNumber;
+  const duration = hours * 60 + minutes;
   if (!Number.isInteger(duration) || duration < 1 || duration > minutesPerDay) {
-    byId("settings-status").textContent = "Укажи целое число минут от 1 до 1440.";
+    byId("settings-status").textContent = "Укажи длительность от 1 минуты до 24 часов.";
     return;
   }
   if (!saveData(previous => ({...previous, settings: {defaultDuration: duration}}))) {

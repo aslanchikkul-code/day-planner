@@ -61,6 +61,7 @@
                 <button id="previous" type="button" class="icon-button" aria-label="Предыдущий период">‹</button>
                 <button id="today" type="button" class="secondary">Сегодня</button>
                 <button id="next" type="button" class="icon-button" aria-label="Следующий период">›</button>
+                <label class="month-jump">Месяц и год<input id="month-jump" type="month" aria-label="Выбрать месяц и год"></label>
               </div>
             </header>
             <div class="calendar-scroll" tabindex="0" aria-label="Календарь">
@@ -130,9 +131,10 @@
       <button id="close-settings" class="icon-button" type="button" aria-label="Закрыть">×</button>
     </div>
     <form id="settings-form">
-      <label class="field">Длительность новых дел, мин
-        <input id="settings-duration" type="number" min="1" max="1440" step="1" required>
-      </label>
+      <fieldset class="duration-fields"><legend>Длительность новых дел</legend>
+        <label class="field">Часы<input id="settings-hours" type="number" min="0" max="24" step="1" required></label>
+        <label class="field">Минуты<input id="settings-minutes" type="number" min="0" max="59" step="1" required></label>
+      </fieldset>
       <p id="settings-status" role="status"></p>
       <button class="primary" type="submit">Сохранить настройки</button>
     </form>
