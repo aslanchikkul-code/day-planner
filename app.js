@@ -52,8 +52,9 @@ function timeRange(task) {
 let tasks = [];
 let categories = defaultCategories;
 let trainingGrouped = false;
-let selected = dateKey(new Date());
-let view = "week";
+const savedDate = localStorage.getItem("rhythm-selected-date");
+let selected = savedDate && validDate(savedDate) ? savedDate : dateKey(new Date());
+let view = localStorage.getItem("rhythm-calendar-view") === "month" ? "month" : "week";
 let importantOnly = false;
 let activeSection = "calendar";
 const overduePageSize = 50;
@@ -474,6 +475,8 @@ grid.addEventListener("drop", event => {
 });
 
 function renderCalendar() {
+  localStorage.setItem("rhythm-selected-date", selected);
+  localStorage.setItem("rhythm-calendar-view", view);
   const date = atDate(selected);
   const week = monday(date);
   const lastDay = plusDays(week, 6);
