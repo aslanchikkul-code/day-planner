@@ -432,7 +432,7 @@ function endDrag() {
 
 grid.addEventListener("dragstart", event => {
   const source = event.target.closest("[data-drag-task]");
-  if (!source || view !== "week" || !event.dataTransfer) return;
+  if (!source || !event.dataTransfer) return;
   draggedTask = {id: source.dataset.dragTask, date: source.closest(".calendar-day").dataset.date};
   event.dataTransfer.effectAllowed = "move";
   event.dataTransfer.setData("text/plain", draggedTask.id);
@@ -512,11 +512,9 @@ function renderCalendar() {
     const previewLimit = isWeek ? 6 : 1;
     for (const task of entries.slice(0, previewLimit)) {
       const preview = element("span", "day-preview");
-      if (isWeek) {
-        preview.draggable = true;
-        preview.dataset.dragTask = task.id;
-        preview.title = "Перетащить на другой день: " + task.title;
-      }
+      preview.draggable = true;
+      preview.dataset.dragTask = task.id;
+      preview.title = "Перетащить на другой день: " + task.title;
       preview.classList.toggle("important", Boolean(task.important));
       if (task.important) preview.append(element("span", "important-star", "★ "));
       preview.append(task.time + " " + task.title);
