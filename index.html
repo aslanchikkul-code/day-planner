@@ -12,6 +12,7 @@
     <header class="topbar">
       <div class="brand"><span class="brand-icon" aria-hidden="true">▦</span><div><strong>Ритм</strong><span>Личный планировщик</span></div></div>
       <div class="topbar-actions">
+        <button id="open-settings" class="secondary" type="button">Настройки</button>
         <button id="open-backup" class="secondary" type="button">Резервная копия</button>
         <button id="open-batch" class="secondary" type="button">Несколько дел</button>
         <button id="add-task" class="primary" type="button"><span aria-hidden="true">＋</span> Новое дело</button>
@@ -121,6 +122,19 @@
     <button id="restore-task" type="button">Вернуть</button>
   </div>
 
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <div class="dialog-heading">
+      <h2 id="settings-title">Настройки</h2>
+      <button id="close-settings" class="icon-button" type="button" aria-label="Закрыть">×</button>
+    </div>
+    <form id="settings-form">
+      <label class="field">Длительность новых дел, мин
+        <input id="settings-duration" type="number" min="1" max="1440" step="1" required>
+      </label>
+      <p id="settings-status" role="status"></p>
+      <button class="primary" type="submit">Сохранить настройки</button>
+    </form>
+  </dialog>
   <dialog id="category-dialog" aria-labelledby="category-title">
     <div class="dialog-heading">
       <h2 id="category-title">Категории</h2>

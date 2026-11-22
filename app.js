@@ -20,6 +20,7 @@ const durationInput = byId("task-duration");
 const importantInput = byId("task-important");
 const importantFilter = byId("important-only");
 const defaultDuration = 30;
+let settings = {defaultDuration};
 const minutesPerDay = 24 * 60;
 const weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const fullDate = new Intl.DateTimeFormat("ru-RU", {weekday: "long", day: "numeric", month: "long"});
@@ -86,7 +87,7 @@ function readData() {
   if (!Array.isArray(data?.tasks) || !Array.isArray(data?.categories)) {
     throw new Error("Сохранённые данные имеют неизвестный формат.");
   }
-  return data;
+  return {...data, settings: readSettings(data.settings)};
 }
 
 function announce(message, error = false) {
@@ -105,6 +106,7 @@ function saveData(change) {
     const updated = {...previous, ...change(previous)};
     localStorage.setItem(storageKey, JSON.stringify(updated));
     ({tasks, categories, trainingGrouped = false} = updated);
+    settings = readSettings(updated.settings);
     return true;
   } catch {
     const message = "Не удалось сохранить дело. Проверь, разрешено ли браузеру хранить данные.";
@@ -1093,10 +1095,10 @@ byId("preview-batch").addEventListener("click", () => {
     }
     const {plan} = entry;
     row.append(element("span", "", dateInputLabel(plan.date) + " · " + plan.time + " · " + plan.title));
-    const conflicts = conflictingTitles(plan.date, plan.time, defaultDuration);
+    const conflicts = conflictingTitles(plan.date, plan.time, settings.defaultDuration);
     const index = valid.indexOf(entry);
     for (const [otherIndex, start] of starts.entries()) {
-      if (otherIndex !== index && Math.abs(start - starts[index]) < defaultDuration) {
+      if (otherIndex !== index && Math.abs(start - starts[index]) < settings.defaultDuration) {
         conflicts.add(valid[otherIndex].plan.title);
       }
     }
@@ -1120,7 +1122,7 @@ function dateInputLabel(key) {
 batchSave.addEventListener("click", () => {
   const valid = previewedBatch.filter(entry => entry.plan);
   if (!valid.length) return;
-  const additions = valid.map(({plan}) => ({...plan, id: crypto.randomUUID(), duration: defaultDuration, done: false}));
+  const additions = valid.map(({plan}) => ({...plan, id: crypto.randomUUID(), duration: settings.defaultDuration, done: false}));
   if (!save(previous => previous.concat(additions))) {
     byId("batch-status").textContent = "Не удалось сохранить дела. Попробуй ещё раз.";
     return;
@@ -1158,7 +1160,7 @@ function openTask(task, time = "09:00") {
   titleInput.value = task?.title || "";
   dateInput.value = task?.date || selected;
   timeInput.value = task?.time || time;
-  durationInput.value = task ? durationOf(task) : defaultDuration;
+  durationInput.value = task ? durationOf(task) : settings.defaultDuration;
   importantInput.checked = task ? Boolean(task.important) : importantOnly;
   showConflicts();
   dialog.showModal();
@@ -1311,6 +1313,41 @@ importantFilter.addEventListener("click", () => {
   render(true);
 });
 
+const settingsDialog = byId("settings-dialog");
+const settingsInput = byId("settings-duration");
+
+byId("open-settings").addEventListener("click", () => {
+  settingsInput.value = settings.defaultDuration;
+  byId("settings-status").textContent = "";
+  settingsDialog.showModal();
+  settingsInput.focus();
+});
+byId("close-settings").addEventListener("click", () => settingsDialog.close());
+byId("settings-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const duration = settingsInput.valueAsNumber;
+  if (!Number.isInteger(duration) || duration < 1 || duration > minutesPerDay) {
+    byId("settings-status").textContent = "Укажи целое число минут от 1 до 1440.";
+    return;
+  }
+  if (!saveData(previous => ({...previous, settings: {defaultDuration: duration}}))) {
+    byId("settings-status").textContent = "Не удалось сохранить настройки.";
+    return;
+  }
+  clearBatchPreview();
+  settingsDialog.close();
+  announce("Настройки сохранены.");
+});
+
+function readSettings(value) {
+  if (value === undefined) return {defaultDuration};
+  if (!value || !Number.isInteger(value.defaultDuration) ||
+      value.defaultDuration < 1 || value.defaultDuration > minutesPerDay) {
+    throw new Error("Некорректные настройки.");
+  }
+  return {defaultDuration: value.defaultDuration};
+}
+
 function validDate(value) {
   return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && dateKey(atDate(value)) === value;
 }
@@ -1338,6 +1375,7 @@ function restoreBackup(text) {
     throw new Error("Некорректные категории.");
   }
   if (new Set(categories.map(category => category.id)).size !== categories.length) throw new Error("Повтор идентификатора категории.");
+  const settings = backup.settings === undefined ? undefined : readSettings(backup.settings);
   const tasks = backup.tasks.map(task => {
     if (!task || typeof task.id !== "string" || !/^[a-z0-9_-]{1,100}$/i.test(task.id) || !validTaskFields(task)) {
       throw new Error("В копии есть некорректное дело.");
@@ -1370,7 +1408,7 @@ function restoreBackup(text) {
     }
     return result;
   });
-  return {tasks, categories: categories.map(({id, name}) => ({id, name: name.trim()}))};
+  return {tasks, categories: categories.map(({id, name}) => ({id, name: name.trim()})), settings};
 }
 
 const backupDialog = byId("backup-dialog");
@@ -1401,8 +1439,8 @@ function downloadFile(content, type, name) {
 
 byId("export-backup").addEventListener("click", () => {
   try {
-    const {tasks, categories} = readData();
-    const backup = {format: backupFormat, version: backupVersion, tasks, categories};
+    const data = readData();
+    const backup = {format: backupFormat, version: backupVersion, tasks: data.tasks, categories: data.categories, settings: readSettings(data.settings)};
     downloadFile(JSON.stringify(backup, null, 2), "application/json", "rhythm-" + dateKey(new Date()) + ".json");
     showBackupStatus("Копия скачивается. Дел в файле: " + backup.tasks.length + ".");
   } catch {
@@ -1439,7 +1477,7 @@ backupFile.addEventListener("change", async () => {
     });
     added = additions.length;
     const remapped = additions.map(task => replaceCategoryReferences(task, id => categoryIds.get(id) || ""));
-    return {tasks: previous.tasks.concat(remapped), categories: mergedCategories};
+    return {tasks: previous.tasks.concat(remapped), categories: mergedCategories, settings: imported.settings || readSettings(previous.settings)};
   })) {
     showBackupStatus("Не удалось сохранить дела в этом браузере.", true);
     return;
@@ -1482,7 +1520,9 @@ function groupTrainingOnce() {
 
 function load() {
   try {
-    ({tasks, categories, trainingGrouped = false} = readData());
+    const data = readData();
+    ({tasks, categories, trainingGrouped = false} = data);
+    settings = readSettings(data.settings);
   } catch {
     announce("Не удалось загрузить сохранённые дела в этом браузере.", true);
   }
