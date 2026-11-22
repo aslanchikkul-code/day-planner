@@ -668,6 +668,7 @@ function resultRow(task) {
   const detail = capitalize(fullDate.format(date)) + " " + date.getFullYear() + " · " + timeRange(task);
   const period = task.repeat ? task.repeat === "daily" ? " · Ежедневно" : " · Еженедельно" : "";
   text.append(title, element("span", "result-detail", detail + period));
+  if (task.note) text.append(element("span", "result-note", task.note));
   const overdue = !task.done && task.date < dateKey(new Date());
   const badge = element("span", task.done ? "result-badge done" : overdue ? "result-badge overdue" : "result-badge",
     task.done ? "Выполнено" : overdue ? "Просрочено" : "В плане");

@@ -181,6 +181,7 @@ body {
 .result-row:hover { background: #f6efff; }
 .result-text { min-width: 0; display: grid; gap: 3px; overflow-wrap: anywhere; }
 .result-detail { font-size: .875rem; color: var(--muted); }
+.result-note { color: var(--muted); font-size: .875rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .result-badge { flex-shrink: 0; padding: 3px 7px; border-radius: 16px; font-size: .875rem; color: #543496; background: #eee5ff; }
 .result-badge.done { color: #285744; background: #e7f4eb; }
 .result-badge.overdue { color: #8c2638; background: #ffedf2; }
