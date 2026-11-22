@@ -641,7 +641,7 @@ const searchPanel = byId("search-panel");
 
 function showOnCalendar(task) {
   clearSearch();
-  activeSection = "calendar";
+  setActiveSection("calendar");
   if (!matchesCategory(task)) categoryFilter.value = "";
   if (importantOnly && !task.important) {
     importantOnly = false;
@@ -800,11 +800,20 @@ const sections = {
 
 for (const section of Object.keys(sections)) {
   byId("show-" + section).addEventListener("click", () => {
-    activeSection = section;
+    setActiveSection(section);
     if (section === "overdue") overdueLimit = overduePageSize;
     clearSearch();
     render(section === "calendar");
   });
+}
+
+function setActiveSection(section) {
+  if (!Object.hasOwn(sections, section)) return;
+  activeSection = section;
+  try {
+    const data = readData();
+    localStorage.setItem(storageKey, JSON.stringify({...data, activeSection: section}));
+  } catch {}
 }
 
 function tasksForWeek(start) {
@@ -1193,7 +1202,7 @@ byId("task-form").addEventListener("submit", event => {
   })) return;
   dialog.close();
   selected = date;
-  if (!task || activeSection !== "overdue") activeSection = "calendar";
+  if (!task || activeSection !== "overdue") setActiveSection("calendar");
   render(true, Number(time.slice(0, 2)));
   byId(activeSection === "overdue" ? "show-overdue" : "add-day-task").focus({preventScroll: true});
   announce(moved ? "Дело перенесено." : "Дело сохранено.");
@@ -1529,6 +1538,7 @@ function load() {
     const data = readData();
     ({tasks, categories, trainingGrouped = false} = data);
     settings = readSettings(data.settings);
+    if (Object.hasOwn(sections, data.activeSection)) activeSection = data.activeSection;
   } catch {
     announce("Не удалось загрузить сохранённые дела в этом браузере.", true);
   }
