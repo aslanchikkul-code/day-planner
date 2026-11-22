@@ -13,6 +13,7 @@
       <div class="brand"><span class="brand-icon" aria-hidden="true">▦</span><div><strong>Ритм</strong><span>Личный планировщик</span></div></div>
       <div class="topbar-actions">
         <button id="open-backup" class="secondary" type="button">Резервная копия</button>
+        <button id="open-batch" class="secondary" type="button">Несколько дел</button>
         <button id="add-task" class="primary" type="button"><span aria-hidden="true">＋</span> Новое дело</button>
       </div>
     </header>
@@ -24,6 +25,7 @@
             <button id="show-calendar" type="button" aria-pressed="true">Календарь</button>
             <button id="show-completed" type="button" aria-pressed="false">Выполнено</button>
             <button id="show-overdue" type="button" aria-pressed="false">Просрочено</button>
+            <button id="show-summary" type="button" aria-pressed="false">Итоги недели</button>
           </nav>
           <div id="search-area" class="search-box">
             <label for="task-search" class="screen-reader">Поиск по делам</label>
@@ -42,6 +44,9 @@
             <button id="week-view" type="button" aria-pressed="true">Неделя</button>
             <button id="month-view" type="button" aria-pressed="false">Месяц</button>
           </div>
+          <label class="screen-reader" for="category-filter">Категория дел</label>
+          <select id="category-filter" class="category-select"><option value="">Все категории</option></select>
+          <button id="manage-categories" class="secondary" type="button">Категории</button>
           <button id="important-only" class="secondary important-filter" type="button" aria-pressed="false"><span aria-hidden="true">★</span> Только важные</button>
           </div>
         </div>
@@ -78,11 +83,80 @@
           <ul id="overdue-results" class="result-list"></ul>
           <button id="more-overdue" class="secondary" type="button" hidden>Показать ещё</button>
         </section>
+        <section id="summary-panel" class="panel" aria-labelledby="summary-range" hidden>
+          <header class="calendar-bar">
+            <h2 id="summary-range" aria-live="polite"></h2>
+            <div class="navigation">
+              <button id="summary-previous" class="icon-button" type="button" aria-label="Предыдущая неделя">‹</button>
+              <button id="summary-today" class="secondary" type="button">Эта неделя</button>
+              <button id="summary-next" class="icon-button" type="button" aria-label="Следующая неделя">›</button>
+            </div>
+          </header>
+          <div class="summary-content">
+            <dl class="summary-metrics">
+              <div><dt>Запланировано</dt><dd id="summary-planned">0</dd></div>
+              <div><dt>Выполнено</dt><dd id="summary-done">0</dd></div>
+              <div><dt>Просрочено</dt><dd id="summary-overdue">0</dd></div>
+            </dl>
+            <p id="summary-empty">На эту неделю пока ничего не запланировано.</p>
+            <div id="summary-progress-row" hidden>
+              <label id="summary-progress-label" for="summary-progress"></label>
+              <progress id="summary-progress" max="1" value="0"></progress>
+            </div>
+            <section id="summary-categories" class="summary-categories" aria-labelledby="summary-category-title" hidden>
+              <h2 id="summary-category-title">Время по категориям</h2>
+              <ul id="summary-category-list"></ul>
+            </section>
+            <button id="export-week" class="secondary week-export" type="button" disabled>Скачать неделю (.ics)</button>
+          </div>
+        </section>
         <p id="notice" role="status" class="screen-reader"></p>
       </section>
     </main>
     <footer>Планы сохраняются в этом браузере</footer>
   </div>
+
+  <div id="undo-delete" class="undo-toast" hidden>
+    <span>Дело удалено</span>
+    <button id="restore-task" type="button">Вернуть</button>
+  </div>
+
+  <dialog id="category-dialog" aria-labelledby="category-title">
+    <div class="dialog-heading">
+      <h2 id="category-title">Категории</h2>
+      <button id="close-categories" class="icon-button" type="button" aria-label="Закрыть">×</button>
+    </div>
+    <form id="category-form">
+      <label class="field">Название категории<input id="category-name" type="text" maxlength="35" required></label>
+      <button class="primary" type="submit">Добавить категорию</button>
+    </form>
+    <p id="category-status" role="status"></p>
+    <ul id="category-list" class="result-list"></ul>
+    <section class="group-section" aria-labelledby="group-title">
+      <h3 id="group-title">Назначить сразу нескольким делам</h3>
+      <label class="field">Категория<select id="group-category"><option value="">Выбери категорию</option></select></label>
+      <label class="field">Найти по названию<input id="group-query" type="search" placeholder="Например, трениров" autocomplete="off"></label>
+      <p>У повторяющегося дела категория изменится у всей серии, включая перенесённые даты.</p>
+      <p id="group-count" role="status">Введи часть названия дела.</p>
+      <ul id="group-preview" class="result-list"></ul>
+      <button id="apply-group-category" class="primary" type="button" disabled>Применить к выбранным</button>
+    </section>
+  </dialog>
+
+  <dialog id="batch-dialog" aria-labelledby="batch-title">
+    <div class="dialog-heading">
+      <h2 id="batch-title">Добавить несколько дел</h2>
+      <button id="close-batch" class="icon-button" type="button" aria-label="Закрыть">×</button>
+    </div>
+    <label class="field" for="batch-input">По одному делу на строку</label>
+    <textarea id="batch-input" rows="5" maxlength="16000" placeholder="завтра 09:00 Позвонить врачу&#10;завтра 14:30 Купить продукты&#10;послезавтра 19:00 Тренировка"></textarea>
+    <div class="backup-actions batch-buttons">
+      <button id="preview-batch" class="secondary" type="button">Предпросмотр</button>
+      <button id="save-batch" class="primary" type="button" disabled>Сохранить дела</button>
+    </div>
+    <p id="batch-status" role="status"></p>
+    <ol id="batch-preview" class="batch-preview"></ol>
+  </dialog>
 
   <dialog id="backup-dialog" aria-labelledby="backup-title">
     <div class="dialog-heading">
@@ -104,6 +178,14 @@
         <h2 id="dialog-title">Новое дело</h2>
         <button id="close-dialog" type="button" class="icon-button" aria-label="Закрыть">×</button>
       </div>
+      <div id="quick-entry" class="quick-entry">
+        <label for="quick-task">Быстрый ввод</label>
+        <div class="quick-row">
+          <input id="quick-task" type="text" maxlength="160" placeholder="завтра 19:00 Тренировка" autocomplete="off">
+          <button id="apply-quick-task" class="secondary" type="button">Подставить</button>
+        </div>
+        <p id="quick-error" role="alert" hidden></p>
+      </div>
       <label class="field">Название<input id="task-title" type="text" maxlength="120" placeholder="Например, прогулка" required></label>
       <div class="form-row">
         <label class="field">Дата<input id="task-date" type="date" required></label>
@@ -120,6 +202,7 @@
           <option value="weekly">Каждую неделю</option>
         </select>
       </label>
+      <label class="field">Категория<select id="task-category"><option value="">Без категории</option></select></label>
       <label class="important-option"><input id="task-important" type="checkbox"> Важно</label>
       <div id="series-controls" hidden>
         <p class="series-note">Изменения относятся только к этому делу.</p>

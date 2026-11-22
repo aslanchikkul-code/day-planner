@@ -2,7 +2,12 @@
 
 const storageKey = "rhythm-day-planner-v1";
 const backupFormat = "rhythm-planner";
-const backupVersion = 1;
+const backupVersion = 2;
+const defaultCategories = [
+  {id: "work", name: "Работа"},
+  {id: "health", name: "Здоровье"},
+  {id: "home", name: "Дом"}
+];
 const byId = id => document.getElementById(id);
 const grid = byId("date-grid");
 const timeline = byId("timeline");
@@ -43,6 +48,8 @@ function timeRange(task) {
 }
 
 let tasks = [];
+let categories = defaultCategories;
+let trainingGrouped = false;
 let selected = dateKey(new Date());
 let view = "week";
 let importantOnly = false;
@@ -73,9 +80,12 @@ function monday(date) {
   return plusDays(date, -((date.getDay() + 6) % 7));
 }
 
-function readTasks() {
+function readData() {
   const data = JSON.parse(localStorage.getItem(storageKey) || "[]");
-  if (!Array.isArray(data)) throw new Error("Сохранённые данные имеют неизвестный формат.");
+  if (Array.isArray(data)) return {tasks: data, categories: defaultCategories};
+  if (!Array.isArray(data?.tasks) || !Array.isArray(data?.categories)) {
+    throw new Error("Сохранённые данные имеют неизвестный формат.");
+  }
   return data;
 }
 
@@ -86,10 +96,15 @@ function announce(message, error = false) {
 }
 
 function save(change) {
+  return saveData(previous => ({...previous, tasks: change(previous.tasks)}));
+}
+
+function saveData(change) {
   try {
-    const updated = change(readTasks());
+    const previous = readData();
+    const updated = {...previous, ...change(previous)};
     localStorage.setItem(storageKey, JSON.stringify(updated));
-    tasks = updated;
+    ({tasks, categories, trainingGrouped = false} = updated);
     return true;
   } catch {
     const message = "Не удалось сохранить дело. Проверь, разрешено ли браузеру хранить данные.";
@@ -173,9 +188,188 @@ function nearbyOccurrence(task, today) {
   return null;
 }
 
+const categoryFilter = byId("category-filter");
+const taskCategory = byId("task-category");
+const categoryDialog = byId("category-dialog");
+
+function categoryOf(task) {
+  return categories.find(category => category.id === task.category);
+}
+
+function fillCategories(select, firstOptions) {
+  const previous = select.value;
+  const options = firstOptions.concat(categories.map(({id, name}) => [id, name]));
+  select.replaceChildren(...options.map(([value, label]) => new Option(label, value)));
+  if (options.some(([value]) => value === previous)) select.value = previous;
+}
+
+const groupCategory = byId("group-category");
+const groupQuery = byId("group-query");
+let groupMatches = new Set();
+
+function renderGroupPreview() {
+  groupMatches = new Set();
+  const query = queryText(groupQuery.value.trim());
+  const found = query ? tasks.filter(task => queryText(task.title).includes(query)) : [];
+  const list = byId("group-preview");
+  list.replaceChildren();
+  for (const task of found) {
+    const row = element("li");
+    const label = element("label", "group-choice");
+    const check = element("input");
+    check.type = "checkbox";
+    check.checked = true;
+    groupMatches.add(task.id);
+    check.addEventListener("change", () => {
+      if (check.checked) groupMatches.add(task.id);
+      else groupMatches.delete(task.id);
+      byId("apply-group-category").disabled = !groupMatches.size || !groupCategory.value;
+    });
+    const text = element("span", "", task.title + (task.repeat ? " · Вся серия" : " · " + task.date + " " + task.time)
+      + " · " + (categoryOf(task)?.name || "Без категории"));
+    label.append(check, text);
+    row.append(label);
+    list.append(row);
+  }
+  byId("group-count").textContent = query ? "Найдено дел или серий: " + found.length : "Введи часть названия дела.";
+  byId("apply-group-category").disabled = !found.length || !groupCategory.value;
+}
+
+groupQuery.addEventListener("input", renderGroupPreview);
+groupCategory.addEventListener("change", () => {
+  byId("apply-group-category").disabled = !groupMatches.size || !groupCategory.value;
+});
+byId("apply-group-category").addEventListener("click", () => {
+  const id = groupCategory.value;
+  if (!id || !groupMatches.size) return;
+  let changed = 0;
+  let categoryExists = true;
+  if (!saveData(data => {
+    if (!data.categories.some(category => category.id === id)) {
+      categoryExists = false;
+      return data;
+    }
+    const grouped = data.tasks.map(task => {
+      if (!groupMatches.has(task.id)) return task;
+      changed++;
+      const result = {...task, category: id};
+      if (task.occurrences) {
+        result.occurrences = Object.fromEntries(Object.entries(task.occurrences)
+          .map(([date, patch]) => [date, {...patch, category: id}]));
+      }
+      return result;
+    });
+    return {...data, tasks: grouped};
+  })) return;
+  render();
+  byId("category-status").textContent = categoryExists
+    ? "Категория назначена. Дел или серий: " + changed + "."
+    : "Категория уже удалена. Выбери другую.";
+});
+
+function renderCategoryControls() {
+  fillCategories(categoryFilter, [["", "Все категории"], ["none", "Без категории"]]);
+  fillCategories(taskCategory, [["", "Без категории"]]);
+  fillCategories(groupCategory, [["", "Выбери категорию"]]);
+}
+
+function matchesCategory(task) {
+  const id = categoryOf(task)?.id;
+  return !categoryFilter.value || (categoryFilter.value === "none" ? !id : id === categoryFilter.value);
+}
+
+function replaceCategoryReferences(task, replace) {
+  const result = {...task};
+  if (task.category !== undefined) result.category = replace(task.category);
+  if (task.occurrences) {
+    result.occurrences = Object.fromEntries(Object.entries(task.occurrences).map(([key, patch]) => [
+      key, patch.category === undefined ? patch : {...patch, category: replace(patch.category)}
+    ]));
+  }
+  return result;
+}
+
+function renderCategoryList() {
+  renderGroupPreview();
+  const list = byId("category-list");
+  list.replaceChildren();
+  for (const category of categories) {
+    const row = element("li", "category-row");
+    const button = element("button", "secondary", "Удалить");
+    button.type = "button";
+    button.setAttribute("aria-label", "Удалить категорию «" + category.name + "»");
+    button.addEventListener("click", () => {
+      if (!confirm("Удалить категорию «" + category.name + "»? Дела останутся в календаре.")) return;
+      if (!saveData(previous => ({
+        categories: previous.categories.filter(entry => entry.id !== category.id),
+        tasks: previous.tasks.map(task => replaceCategoryReferences(task, id => id === category.id ? "" : id))
+      }))) {
+        byId("category-status").textContent = "Не удалось удалить категорию.";
+        return;
+      }
+      byId("category-status").textContent = "Категория удалена. Дела сохранены.";
+      render();
+      byId("category-name").focus();
+    });
+    row.append(element("span", "", category.name), button);
+    list.append(row);
+  }
+}
+
+byId("manage-categories").addEventListener("click", () => {
+  byId("category-status").textContent = "";
+  renderCategoryList();
+  categoryDialog.showModal();
+  byId("category-name").focus();
+});
+byId("close-categories").addEventListener("click", () => categoryDialog.close());
+categoryFilter.addEventListener("change", () => render(true));
+byId("category-form").addEventListener("submit", event => {
+  event.preventDefault();
+  const input = byId("category-name");
+  const name = input.value.trim();
+  const status = byId("category-status");
+  if (!name || queryText(name) === queryText("Без категории")) {
+    status.textContent = "Введи другое название категории.";
+    return;
+  }
+  let exists = false;
+  const added = saveData(previous => {
+    exists = previous.categories.some(category => queryText(category.name) === queryText(name));
+    if (exists) return previous;
+    return {...previous, categories: [...previous.categories, {id: crypto.randomUUID(), name}]};
+  });
+  if (!added || exists) {
+    status.textContent = exists ? "Категория с таким названием уже есть." : "Не удалось сохранить категорию.";
+    return;
+  }
+  input.value = "";
+  status.textContent = "Категория добавлена.";
+  render();
+});
+
 function visibleTasksFor(key) {
-  const entries = tasksFor(key);
-  return importantOnly ? entries.filter(task => task.important) : entries;
+  return tasksFor(key).filter(task => matchesCategory(task) && (!importantOnly || task.important));
+}
+
+function conflictingTitles(date, time, duration, editedId) {
+  const start = timeInMinutes(time);
+  const end = start + duration;
+  const day = atDate(date);
+  const overlapping = new Set();
+  for (const offset of [-1, 0, 1]) {
+    for (const task of tasksFor(dateKey(plusDays(day, offset)))) {
+      if (task.id === editedId) continue;
+      const otherStart = offset * minutesPerDay + timeInMinutes(task.time);
+      const otherEnd = otherStart + durationOf(task);
+      if (start < otherEnd && otherStart < end) overlapping.add(task.title);
+    }
+  }
+  return overlapping;
+}
+
+function conflictMessage(titles) {
+  return "Пересекается с делами: " + [...titles].map(title => "«" + title + "»").join(", ") + ".";
 }
 
 function showConflicts() {
@@ -189,21 +383,10 @@ function showConflicts() {
     return;
   }
 
-  const start = timeInMinutes(time);
-  const end = start + duration;
-  const day = atDate(date);
-  const overlapping = new Set();
-  for (const offset of [-1, 0, 1]) {
-    for (const task of tasksFor(dateKey(plusDays(day, offset)))) {
-      if (task.id === editingTask?.id) continue;
-      const otherStart = offset * minutesPerDay + timeInMinutes(task.time);
-      const otherEnd = otherStart + durationOf(task);
-      if (start < otherEnd && otherStart < end) overlapping.add(task.title);
-    }
-  }
+  const overlapping = conflictingTitles(date, time, duration, editingTask?.id);
   warning.hidden = overlapping.size === 0;
   warning.textContent = overlapping.size
-    ? "Пересекается с делами: " + [...overlapping].map(title => "«" + title + "»").join(", ") + ". Можно сохранить."
+    ? conflictMessage(overlapping) + " Можно сохранить."
     : "";
 }
 
@@ -228,6 +411,64 @@ function element(tag, className, text) {
   if (text !== undefined) node.textContent = text;
   return node;
 }
+
+let draggedTask;
+let highlightedDay;
+
+function highlightDropDay(day) {
+  if (day === highlightedDay) return;
+  highlightedDay?.classList.remove("drag-target");
+  highlightedDay = day;
+  highlightedDay?.classList.add("drag-target");
+}
+
+function endDrag() {
+  draggedTask = undefined;
+  highlightDropDay(undefined);
+}
+
+grid.addEventListener("dragstart", event => {
+  const source = event.target.closest("[data-drag-task]");
+  if (!source || view !== "week" || !event.dataTransfer) return;
+  draggedTask = {id: source.dataset.dragTask, date: source.closest(".calendar-day").dataset.date};
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", draggedTask.id);
+});
+
+grid.addEventListener("dragover", event => {
+  const day = event.target.closest(".calendar-day");
+  if (!draggedTask || !day || day.dataset.date === draggedTask.date) {
+    highlightDropDay(undefined);
+    return;
+  }
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  highlightDropDay(day);
+});
+
+grid.addEventListener("dragleave", event => {
+  if (highlightedDay && !highlightedDay.contains(event.relatedTarget)) highlightDropDay(undefined);
+});
+grid.addEventListener("dragend", endDrag);
+
+grid.addEventListener("drop", event => {
+  const target = event.target.closest(".calendar-day");
+  if (!draggedTask) return;
+  event.preventDefault();
+  const {id, date} = draggedTask;
+  const destination = target?.dataset.date;
+  endDrag();
+  if (!destination || destination === date) return;
+
+  const task = tasksFor(date).find(entry => entry.id === id);
+  if (!task) return;
+  const overlapping = conflictingTitles(destination, task.time, durationOf(task), task.id);
+  if (overlapping.size && !confirm(conflictMessage(overlapping) + " Всё равно перенести?")) return;
+
+  if (!save(previous => updateTaskFields(previous, task, {date: destination}))) return;
+  showOnCalendar({...task, date: destination});
+  announce("Дело перенесено на " + fullDate.format(atDate(destination)) + " в " + task.time + ".");
+});
 
 function renderCalendar() {
   const date = atDate(selected);
@@ -268,6 +509,11 @@ function renderCalendar() {
     const previewLimit = isWeek ? 6 : 1;
     for (const task of entries.slice(0, previewLimit)) {
       const preview = element("span", "day-preview");
+      if (isWeek) {
+        preview.draggable = true;
+        preview.dataset.dragTask = task.id;
+        preview.title = "Перетащить на другой день: " + task.title;
+      }
       preview.classList.toggle("important", Boolean(task.important));
       if (task.important) preview.append(element("span", "important-star", "★ "));
       preview.append(task.time + " " + task.title);
@@ -291,6 +537,12 @@ function setTaskDone(task, done) {
   return save(previous => task.seriesId
     ? patchOccurrence(previous, task, {done})
     : previous.map(entry => entry.id === task.id ? {...entry, done} : entry));
+}
+
+function updateTaskFields(previous, task, fields) {
+  return task.seriesId
+    ? patchOccurrence(previous, task, fields)
+    : previous.map(entry => entry.id === task.id ? {...entry, ...fields} : entry);
 }
 
 function taskRow(task) {
@@ -325,6 +577,8 @@ function taskRow(task) {
     edit.append(star);
   }
   edit.append(element("span", "task-name", task.title));
+  const category = categoryOf(task);
+  if (category) edit.append(element("span", "task-category", category.name));
   edit.addEventListener("click", () => openTask(task));
   row.append(check, edit);
   return row;
@@ -385,6 +639,7 @@ const searchPanel = byId("search-panel");
 function showOnCalendar(task) {
   clearSearch();
   activeSection = "calendar";
+  if (!matchesCategory(task)) categoryFilter.value = "";
   if (importantOnly && !task.important) {
     importantOnly = false;
     importantFilter.setAttribute("aria-pressed", "false");
@@ -535,7 +790,8 @@ byId("search-area").addEventListener("keydown", event => {
 const sections = {
   calendar: "Мой календарь",
   completed: "Выполненные дела",
-  overdue: "Просроченные дела"
+  overdue: "Просроченные дела",
+  summary: "Итоги недели"
 };
 
 for (const section of Object.keys(sections)) {
@@ -547,7 +803,141 @@ for (const section of Object.keys(sections)) {
   });
 }
 
+function tasksForWeek(start) {
+  const entries = [];
+  for (let offset = 0; offset < 7; offset++) {
+    entries.push(...tasksFor(dateKey(plusDays(start, offset))));
+  }
+  return entries;
+}
+
+function calendarText(value) {
+  return value.replaceAll("\\", "\\\\").replace(/\r\n|\r|\n/g, "\\n")
+    .replaceAll(",", "\\,").replaceAll(";", "\\;");
+}
+
+function foldCalendarLine(line) {
+  const encoder = new TextEncoder();
+  let result = "";
+  let bytes = 0;
+  for (const character of line) {
+    const size = encoder.encode(character).length;
+    if (bytes + size > 75) {
+      result += "\r\n ";
+      bytes = 1;
+    }
+    result += character;
+    bytes += size;
+  }
+  return result;
+}
+
+function calendarDateTime(date, time) {
+  return date.replaceAll("-", "") + "T" + time.replace(":", "") + "00";
+}
+
+function calendarFile(entries) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Rhythm//Personal Planner//RU", "CALSCALE:GREGORIAN"];
+  for (const task of entries) {
+    const end = timeInMinutes(task.time) + durationOf(task);
+    const endDate = dateKey(plusDays(atDate(task.date), Math.floor(end / minutesPerDay)));
+    const title = task.done ? "✓ " + task.title : task.title;
+    lines.push("BEGIN:VEVENT", "UID:" + encodeURIComponent(task.id) + "@rhythm.local", "DTSTAMP:" + stamp,
+      "DTSTART:" + calendarDateTime(task.date, task.time),
+      "DTEND:" + calendarDateTime(endDate, clockTime(end)),
+      "SUMMARY:" + calendarText(title));
+    if (task.done) lines.push("DESCRIPTION:Выполнено в Ритме");
+    lines.push("END:VEVENT");
+  }
+  lines.push("END:VCALENDAR");
+  return lines.map(foldCalendarLine).join("\r\n") + "\r\n";
+}
+
+byId("export-week").addEventListener("click", () => {
+  const start = monday(atDate(selected));
+  const entries = tasksForWeek(start);
+  if (!entries.length) return;
+  downloadFile(calendarFile(entries), "text/calendar;charset=utf-8", "rhythm-week-" + dateKey(start) + ".ics");
+  announce("Неделя скачивается в файл календаря.");
+});
+
+function formatMinutes(total) {
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  if (!hours) return minutes + " мин";
+  return hours + " ч" + (minutes ? " " + minutes + " мин" : "");
+}
+
+function renderCategorySummary(entries) {
+  const totals = new Map();
+  for (const task of entries) {
+    const category = categoryOf(task);
+    const id = category?.id || "";
+    if (!totals.has(id)) totals.set(id, {name: category?.name || "Без категории", planned: 0, done: 0});
+    const total = totals.get(id);
+    const duration = durationOf(task);
+    total.planned += duration;
+    if (task.done) total.done += duration;
+  }
+
+  const sorted = [...totals.values()].sort((a, b) => b.planned - a.planned || a.name.localeCompare(b.name, "ru"));
+  const rows = sorted.map(total => {
+    const row = element("li", "summary-category-row");
+    const label = element("div", "summary-category-label");
+    label.append(element("strong", "", total.name),
+      element("span", "", formatMinutes(total.done) + " из " + formatMinutes(total.planned)));
+    const progress = element("progress");
+    progress.max = total.planned;
+    progress.value = total.done;
+    progress.setAttribute("aria-label", "Время выполненных дел в категории «" + total.name + "»");
+    row.append(label, progress);
+    return row;
+  });
+  byId("summary-category-list").replaceChildren(...rows);
+  byId("summary-categories").hidden = rows.length === 0;
+}
+
+function renderSummary() {
+  const start = monday(atDate(selected));
+  const end = plusDays(start, 6);
+  const today = dateKey(new Date());
+  const range = start.getFullYear() === end.getFullYear()
+    ? shortDate.format(start)
+    : shortDate.format(start) + " " + start.getFullYear();
+  byId("summary-range").textContent = range + " — " + shortDate.format(end) + " " + end.getFullYear() + " г.";
+
+  const entries = tasksForWeek(start);
+  renderCategorySummary(entries);
+  const planned = entries.length;
+  const done = entries.filter(task => task.done).length;
+  const overdue = entries.filter(task => !task.done && task.date < today).length;
+  byId("export-week").disabled = planned === 0;
+  byId("summary-planned").textContent = planned;
+  byId("summary-done").textContent = done;
+  byId("summary-overdue").textContent = overdue;
+  byId("summary-empty").hidden = planned > 0;
+  byId("summary-progress-row").hidden = planned === 0;
+  const progress = byId("summary-progress");
+  progress.max = planned || 1;
+  progress.value = done;
+  byId("summary-progress-label").textContent = "Выполнено " + done + " из " + planned;
+}
+
+for (const [id, days] of [["summary-previous", -7], ["summary-next", 7]]) {
+  byId(id).addEventListener("click", () => {
+    selected = dateKey(plusDays(atDate(selected), days));
+    renderSummary();
+  });
+}
+byId("summary-today").addEventListener("click", () => {
+  selected = dateKey(new Date());
+  renderSummary();
+});
+
 function render(scroll = false, targetHour) {
+  renderCategoryControls();
+  if (categoryDialog.open) renderCategoryList();
   for (const section of Object.keys(sections)) {
     byId("show-" + section).setAttribute("aria-pressed", section === activeSection);
   }
@@ -558,10 +948,12 @@ function render(scroll = false, targetHour) {
   byId("calendar-layout").hidden = !calendarActive;
   byId("completed-panel").hidden = activeSection !== "completed";
   byId("overdue-panel").hidden = activeSection !== "overdue";
+  byId("summary-panel").hidden = activeSection !== "summary";
   renderSearch();
   if (!calendarActive) {
     if (activeSection === "completed") renderCompleted();
-    else renderOverdue();
+    else if (activeSection === "overdue") renderOverdue();
+    else renderSummary();
     return;
   }
   renderCalendar();
@@ -591,8 +983,169 @@ function movePeriod(direction) {
   render(true);
 }
 
+const quickInput = byId("quick-task");
+
+function parseQuickTask(text, now = new Date()) {
+  let remaining = text.trim();
+  let date = "";
+  let time = "";
+  const relative = new Map([["сегодня", 0], ["завтра", 1], ["послезавтра", 2]]);
+  const first = remaining.split(/\s+/, 1)[0].toLocaleLowerCase("ru");
+  const numeric = first.match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?$/);
+  if (relative.has(first)) {
+    date = dateKey(plusDays(now, relative.get(first)));
+  } else if (/^\d{4}-\d{2}-\d{2}$/.test(first)) {
+    date = first;
+  } else if (numeric) {
+    const [, day, month, year = String(now.getFullYear())] = numeric;
+    date = year + "-" + pad(month) + "-" + pad(day);
+  }
+  if (date) {
+    if (!validDate(date)) throw new Error("Такой даты нет. Проверь день и месяц.");
+    remaining = remaining.slice(first.length).trimStart();
+  }
+
+  const clock = remaining.match(/^(\d{1,2}):(\d{1,2})(?=\s|$)/);
+  if (clock) {
+    const [, hours, minutes] = clock;
+    if (Number(hours) > 23 || Number(minutes) > 59) throw new Error("Укажи время от 00:00 до 23:59.");
+    time = pad(hours) + ":" + pad(minutes);
+    remaining = remaining.slice(clock[0].length).trimStart();
+  } else if (/^\d+:/u.test(remaining)) {
+    throw new Error("Проверь время. Например, 19:00.");
+  }
+  if (!remaining || remaining.length > 120) throw new Error("Добавь название дела длиной до 120 символов.");
+  return {title: remaining, date, time};
+}
+
+function applyQuickTask() {
+  const message = byId("quick-error");
+  try {
+    const plan = parseQuickTask(quickInput.value);
+    titleInput.value = plan.title;
+    dateInput.value = plan.date;
+    timeInput.value = plan.time;
+    message.hidden = true;
+    showConflicts();
+    if (!plan.date) dateInput.focus();
+    else if (!plan.time) timeInput.focus();
+    else titleInput.focus();
+  } catch (error) {
+    message.textContent = error.message;
+    message.hidden = false;
+    quickInput.focus();
+  }
+}
+
+byId("apply-quick-task").addEventListener("click", applyQuickTask);
+quickInput.addEventListener("keydown", event => {
+  if (event.key === "Enter" && !event.isComposing) {
+    event.preventDefault();
+    applyQuickTask();
+  }
+});
+quickInput.addEventListener("input", () => { byId("quick-error").hidden = true; });
+
+const batchDialog = byId("batch-dialog");
+const batchInput = byId("batch-input");
+const batchSave = byId("save-batch");
+let previewedBatch = [];
+
+function clearBatchPreview() {
+  previewedBatch = [];
+  byId("batch-preview").replaceChildren();
+  byId("batch-status").textContent = "";
+  batchSave.disabled = true;
+}
+
+byId("open-batch").addEventListener("click", () => {
+  batchDialog.showModal();
+  batchInput.focus();
+});
+byId("close-batch").addEventListener("click", () => batchDialog.close());
+batchInput.addEventListener("input", clearBatchPreview);
+
+byId("preview-batch").addEventListener("click", () => {
+  clearBatchPreview();
+  const now = new Date();
+  const lines = batchInput.value.split(/\r?\n/);
+  for (const [index, text] of lines.entries()) {
+    if (!text.trim()) continue;
+    const entry = {line: index + 1, text};
+    try {
+      const plan = parseQuickTask(text, now);
+      if (!plan.date || !plan.time) throw new Error("Укажи дату и время.");
+      entry.plan = plan;
+    } catch (error) {
+      entry.error = error.message;
+    }
+    previewedBatch.push(entry);
+  }
+
+  const valid = previewedBatch.filter(entry => entry.plan);
+  const starts = valid.map(({plan}) => Date.parse(plan.date + "T" + plan.time + ":00Z") / 60000);
+  const rows = previewedBatch.map(entry => {
+    const row = element("li", entry.error ? "batch-row batch-error" : "batch-row");
+    row.append(element("strong", "", "Строка " + entry.line));
+    if (entry.error) {
+      row.append(element("span", "", entry.error + " «" + entry.text.trim() + "»"));
+      return row;
+    }
+    const {plan} = entry;
+    row.append(element("span", "", dateInputLabel(plan.date) + " · " + plan.time + " · " + plan.title));
+    const conflicts = conflictingTitles(plan.date, plan.time, defaultDuration);
+    const index = valid.indexOf(entry);
+    for (const [otherIndex, start] of starts.entries()) {
+      if (otherIndex !== index && Math.abs(start - starts[index]) < defaultDuration) {
+        conflicts.add(valid[otherIndex].plan.title);
+      }
+    }
+    if (conflicts.size) row.append(element("span", "batch-warning", conflictMessage(conflicts)));
+    return row;
+  });
+  byId("batch-preview").replaceChildren(...rows);
+  const errors = previewedBatch.length - valid.length;
+  byId("batch-status").textContent = previewedBatch.length
+    ? "Можно сохранить: " + valid.length + ". Строк с ошибками: " + errors + "."
+    : "Вставь хотя бы одну строку с делом.";
+  batchSave.disabled = valid.length === 0;
+  batchSave.textContent = errors ? "Сохранить без строк с ошибками" : "Сохранить дела";
+});
+
+function dateInputLabel(key) {
+  const date = atDate(key);
+  return capitalize(fullDate.format(date)) + " " + date.getFullYear();
+}
+
+batchSave.addEventListener("click", () => {
+  const valid = previewedBatch.filter(entry => entry.plan);
+  if (!valid.length) return;
+  const additions = valid.map(({plan}) => ({...plan, id: crypto.randomUUID(), duration: defaultDuration, done: false}));
+  if (!save(previous => previous.concat(additions))) {
+    byId("batch-status").textContent = "Не удалось сохранить дела. Попробуй ещё раз.";
+    return;
+  }
+
+  const remaining = previewedBatch.filter(entry => entry.error);
+  batchInput.value = remaining.map(entry => entry.text).join("\n");
+  clearBatchPreview();
+  if (remaining.length) {
+    render();
+    byId("batch-status").textContent = "Добавлено дел: " + additions.length + ". Исправь оставшиеся строки и снова нажми «Предпросмотр».";
+    batchInput.focus();
+  } else {
+    batchDialog.close();
+    showOnCalendar(additions.sort(compareByDate)[0]);
+    announce("Добавлено дел: " + additions.length + ".");
+  }
+});
+
 function openTask(task, time = "09:00") {
   editingTask = task;
+  taskCategory.value = task ? categoryOf(task)?.id || "" : categoryFilter.value === "none" ? "" : categoryFilter.value;
+  byId("quick-entry").hidden = Boolean(task);
+  byId("quick-error").hidden = true;
+  quickInput.value = "";
   byId("repeat-field").hidden = Boolean(task);
   repeatInput.value = "";
   byId("series-controls").hidden = !task?.seriesId;
@@ -609,7 +1162,7 @@ function openTask(task, time = "09:00") {
   importantInput.checked = task ? Boolean(task.important) : importantOnly;
   showConflicts();
   dialog.showModal();
-  titleInput.focus();
+  (task ? titleInput : quickInput).focus();
 }
 
 byId("task-form").addEventListener("submit", event => {
@@ -624,12 +1177,11 @@ byId("task-form").addEventListener("submit", event => {
   }
   const date = dateInput.value;
   const time = timeInput.value;
-  const fields = {title, date, time, duration: durationInput.valueAsNumber, important: importantInput.checked};
+  const fields = {title, date, time, duration: durationInput.valueAsNumber, important: importantInput.checked, category: taskCategory.value};
   const task = editingTask;
   const moved = task && (task.date !== date || task.time !== time);
   if (!save(previous => {
-    if (task?.seriesId) return patchOccurrence(previous, task, fields);
-    if (task) return previous.map(entry => entry.id === task.id ? {...entry, ...fields} : entry);
+    if (task) return updateTaskFields(previous, task, fields);
     const newTask = {id: crypto.randomUUID(), ...fields, done: false};
     if (repeatInput.value) newTask.repeat = repeatInput.value;
     return [...previous, newTask];
@@ -642,16 +1194,85 @@ byId("task-form").addEventListener("submit", event => {
   announce(moved ? "Дело перенесено." : "Дело сохранено.");
 });
 
+const undoToast = byId("undo-delete");
+const restoreButton = byId("restore-task");
+const undoWindow = 10000;
+let pendingUndo;
+let undoTimer;
+
+function focusCurrentSection() {
+  byId(activeSection === "calendar" ? "add-day-task" : "show-" + activeSection).focus({preventScroll: true});
+}
+
+function dismissUndo() {
+  clearTimeout(undoTimer);
+  pendingUndo = undefined;
+  if (document.activeElement === restoreButton) focusCurrentSection();
+  undoToast.hidden = true;
+}
+
+function offerUndo(restore) {
+  clearTimeout(undoTimer);
+  pendingUndo = {restore, expiresAt: Date.now() + undoWindow};
+  undoToast.hidden = false;
+  undoTimer = setTimeout(dismissUndo, undoWindow);
+  announce("Дело удалено. В течение десяти секунд его можно вернуть.");
+}
+
+function restoreOccurrence(previous, task) {
+  const series = previous.find(entry => entry.id === task.seriesId);
+  const patch = series?.occurrences?.[task.seriesDate];
+  if (!patch?.deleted || !repeatsOn(series, task.seriesDate)) return previous;
+  const occurrences = {...series.occurrences};
+  const {deleted, ...fields} = patch;
+  if (Object.keys(fields).length) occurrences[task.seriesDate] = fields;
+  else delete occurrences[task.seriesDate];
+  return previous.map(entry => entry.id === series.id ? {...entry, occurrences} : entry);
+}
+
+restoreButton.addEventListener("click", () => {
+  if (!pendingUndo || Date.now() >= pendingUndo.expiresAt) {
+    dismissUndo();
+    return;
+  }
+  let restored = false;
+  if (!save(previous => {
+    const updated = pendingUndo.restore(previous);
+    restored = updated !== previous;
+    return updated;
+  })) return;
+  dismissUndo();
+  render();
+  announce(restored ? "Дело возвращено." : "Это дело уже восстановлено или недоступно.");
+});
+
 byId("delete-task").addEventListener("click", () => {
   if (!editingTask) return;
   const task = editingTask;
-  if (!save(previous => task.seriesId
-    ? patchOccurrence(previous, task, {deleted: true})
-    : previous.filter(entry => entry.id !== task.id))) return;
+  let restore;
+  if (!save(previous => {
+    if (task.seriesId) {
+      const series = previous.find(entry => entry.id === task.seriesId);
+      if (!series || !repeatsOn(series, task.seriesDate) || series.occurrences?.[task.seriesDate]?.deleted) return previous;
+      restore = entries => restoreOccurrence(entries, task);
+      return patchOccurrence(previous, task, {deleted: true});
+    }
+    const index = previous.findIndex(entry => entry.id === task.id);
+    if (index === -1) return previous;
+    const removed = previous[index];
+    restore = entries => entries.some(entry => entry.id === removed.id)
+      ? entries
+      : [...entries.slice(0, index), removed, ...entries.slice(index)];
+    return previous.filter(entry => entry.id !== task.id);
+  })) return;
   dialog.close();
   render();
-  byId(activeSection === "overdue" ? "show-overdue" : "add-day-task").focus({preventScroll: true});
-  announce("Дело удалено.");
+  if (restore) {
+    offerUndo(restore);
+    restoreButton.focus({preventScroll: true});
+  } else {
+    focusCurrentSection();
+  }
 });
 
 byId("end-series").addEventListener("click", () => {
@@ -700,21 +1321,31 @@ function validTaskFields(task, partial = false) {
     && (partial && task.time === undefined || typeof task.time === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(task.time))
     && (task.duration === undefined || Number.isInteger(task.duration) && task.duration >= 1 && task.duration <= minutesPerDay)
     && (task.done === undefined || typeof task.done === "boolean")
-    && (task.important === undefined || typeof task.important === "boolean");
+    && (task.important === undefined || typeof task.important === "boolean")
+    && (task.category === undefined || typeof task.category === "string");
 }
 
 function restoreBackup(text) {
   const backup = JSON.parse(text);
-  if (backup?.format !== backupFormat || backup.version !== backupVersion || !Array.isArray(backup.tasks)) {
+  if (backup?.format !== backupFormat || ![1, backupVersion].includes(backup.version) || !Array.isArray(backup.tasks)) {
     throw new Error("Неизвестный формат резервной копии.");
   }
-  return backup.tasks.map(task => {
+  const categories = backup.version === 1 ? [] : backup.categories;
+  if (!Array.isArray(categories) || categories.some(category => !category ||
+      typeof category.id !== "string" || !/^[a-z0-9_-]{1,100}$/i.test(category.id) || category.id === "none" ||
+      typeof category.name !== "string" || !category.name.trim() || category.name.length > 35 ||
+      queryText(category.name.trim()) === queryText("Без категории"))) {
+    throw new Error("Некорректные категории.");
+  }
+  if (new Set(categories.map(category => category.id)).size !== categories.length) throw new Error("Повтор идентификатора категории.");
+  const tasks = backup.tasks.map(task => {
     if (!task || typeof task.id !== "string" || !/^[a-z0-9_-]{1,100}$/i.test(task.id) || !validTaskFields(task)) {
       throw new Error("В копии есть некорректное дело.");
     }
     const result = {id: task.id, title: task.title, date: task.date, time: task.time, done: task.done ?? false};
     if (task.duration !== undefined) result.duration = task.duration;
     if (task.important !== undefined) result.important = task.important;
+    if (task.category !== undefined) result.category = task.category;
     if (task.repeat === undefined) return result;
     if (!["daily", "weekly"].includes(task.repeat)) throw new Error("Некорректный повтор.");
     result.repeat = task.repeat;
@@ -733,12 +1364,13 @@ function restoreBackup(text) {
         throw new Error("В копии есть некорректный перенос или отметка.");
       }
       result.occurrences[date] = {};
-      for (const key of ["title", "date", "time", "duration", "important", "done", "deleted"]) {
+      for (const key of ["title", "date", "time", "duration", "important", "done", "deleted", "category"]) {
         if (patch[key] !== undefined) result.occurrences[date][key] = patch[key];
       }
     }
     return result;
   });
+  return {tasks, categories: categories.map(({id, name}) => ({id, name: name.trim()}))};
 }
 
 const backupDialog = byId("backup-dialog");
@@ -756,18 +1388,22 @@ byId("open-backup").addEventListener("click", () => {
   backupDialog.showModal();
 });
 byId("close-backup").addEventListener("click", () => backupDialog.close());
+function downloadFile(content, type, name) {
+  const url = URL.createObjectURL(new Blob([content], {type}));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 byId("export-backup").addEventListener("click", () => {
   try {
-    const backup = {format: backupFormat, version: backupVersion, tasks: readTasks()};
-    const file = new Blob([JSON.stringify(backup, null, 2)], {type: "application/json"});
-    const url = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "rhythm-" + dateKey(new Date()) + ".json";
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const {tasks, categories} = readData();
+    const backup = {format: backupFormat, version: backupVersion, tasks, categories};
+    downloadFile(JSON.stringify(backup, null, 2), "application/json", "rhythm-" + dateKey(new Date()) + ".json");
     showBackupStatus("Копия скачивается. Дел в файле: " + backup.tasks.length + ".");
   } catch {
     showBackupStatus("Не удалось прочитать планы для копии.", true);
@@ -786,26 +1422,67 @@ backupFile.addEventListener("change", async () => {
     return;
   }
   let added = 0;
-  if (!save(previous => {
-    const knownIds = new Set(previous.map(task => task.id));
-    const additions = imported.filter(task => {
+  if (!saveData(previous => {
+    const mergedCategories = [...previous.categories];
+    const categoryIds = new Map();
+    for (const incoming of imported.categories) {
+      const existing = mergedCategories.find(category => queryText(category.name) === queryText(incoming.name));
+      const id = existing?.id || (mergedCategories.some(category => category.id === incoming.id) ? crypto.randomUUID() : incoming.id);
+      categoryIds.set(incoming.id, id);
+      if (!existing) mergedCategories.push({...incoming, id});
+    }
+    const knownIds = new Set(previous.tasks.map(task => task.id));
+    const additions = imported.tasks.filter(task => {
       if (knownIds.has(task.id)) return false;
       knownIds.add(task.id);
       return true;
     });
     added = additions.length;
-    return previous.concat(additions);
+    const remapped = additions.map(task => replaceCategoryReferences(task, id => categoryIds.get(id) || ""));
+    return {tasks: previous.tasks.concat(remapped), categories: mergedCategories};
   })) {
     showBackupStatus("Не удалось сохранить дела в этом браузере.", true);
     return;
   }
   render();
-  showBackupStatus("Добавлено дел: " + added + ". Уже были в календаре: " + (imported.length - added) + ".");
+  showBackupStatus("Добавлено дел: " + added + ". Уже были в календаре: " + (imported.tasks.length - added) + ".");
 });
+
+function isTraining(title) {
+  return /(?:^|[^\p{L}])тренировк(?:а|и|у|е|ой|ою|ам|ами|ах)(?=$|[^\p{L}])/iu.test(title);
+}
+
+function groupExistingTraining(data) {
+  const health = data.categories.find(category => queryText(category.name) === "здоровье");
+  if (!health) return data.tasks;
+  return data.tasks.map(task => {
+    const isTrainingTask = isTraining(task.title);
+    const grouped = isTrainingTask ? {...task, category: health.id} : {...task};
+    if (task.occurrences) {
+      grouped.occurrences = Object.fromEntries(Object.entries(task.occurrences).map(([date, patch]) => {
+        if (isTraining(patch.title ?? task.title)) {
+          return [date, {...patch, category: health.id}];
+        }
+        if (isTrainingTask && patch.category === undefined) {
+          return [date, {...patch, category: task.category || ""}];
+        }
+        return [date, patch];
+      }));
+    }
+    return grouped;
+  });
+}
+
+function groupTrainingOnce() {
+  if (trainingGrouped) return;
+  saveData(data => data.trainingGrouped ? data : {
+    ...data, tasks: groupExistingTraining(data), trainingGrouped: true
+  });
+}
 
 function load() {
   try {
-    tasks = readTasks();
+    ({tasks, categories, trainingGrouped = false} = readData());
   } catch {
     announce("Не удалось загрузить сохранённые дела в этом браузере.", true);
   }
@@ -837,5 +1514,6 @@ document.addEventListener("visibilitychange", () => {
 });
 
 load();
+groupTrainingOnce();
 render(true);
 scheduleDayChange();
