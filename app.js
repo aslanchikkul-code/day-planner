@@ -23,11 +23,13 @@ const importantFilter = byId("important-only");
 const weatherCityInput = byId("weather-city");
 const weatherDetails = byId("weather-details");
 const weatherPlace = byId("weather-place");
+const weatherRetry = byId("weather-retry");
 const weatherStorageKey = "rhythm-weather-city";
 const defaultWeatherCity = {name: "Москва", country: "Россия", latitude: 55.75, longitude: 37.62};
 let weatherCity = defaultWeatherCity;
 let weatherDaily = null;
 let weatherError = "";
+let weatherSearchError = "";
 let weatherLoadedAt = 0;
 let weatherRequest = 0;
 try {
@@ -111,6 +113,11 @@ function weatherDescription(code) {
 
 function renderWeather() {
   weatherPlace.textContent = weatherCity.name + (weatherCity.country ? ", " + weatherCity.country : "");
+  weatherRetry.hidden = !weatherError || Boolean(weatherSearchError);
+  if (weatherSearchError) {
+    weatherDetails.textContent = weatherSearchError;
+    return;
+  }
   if (weatherError) {
     weatherDetails.textContent = weatherError;
     return;
@@ -136,6 +143,7 @@ async function loadWeather() {
   const request = ++weatherRequest;
   weatherDaily = null;
   weatherError = "";
+  weatherSearchError = "";
   renderWeather();
   const params = new URLSearchParams({
     latitude: String(weatherCity.latitude), longitude: String(weatherCity.longitude),
@@ -152,15 +160,25 @@ async function loadWeather() {
     weatherLoadedAt = Date.now();
   } catch {
     if (request !== weatherRequest) return;
-    weatherError = "Не удалось загрузить погоду. Проверь интернет и обнови страницу.";
+    weatherError = "Не удалось загрузить погоду. Проверь интернет и попробуй ещё раз.";
   }
   renderWeather();
 }
+
+weatherRetry.addEventListener("click", loadWeather);
+weatherCityInput.addEventListener("input", () => {
+  if (weatherSearchError) {
+    weatherSearchError = "";
+    renderWeather();
+  }
+});
 
 byId("weather-city-form").addEventListener("submit", async event => {
   event.preventDefault();
   const name = weatherCityInput.value.trim();
   if (!name) return;
+  weatherSearchError = "";
+  weatherRetry.hidden = true;
   weatherDetails.textContent = "Ищу город…";
   try {
     const params = new URLSearchParams({name, count: "1", language: "ru"});
@@ -169,7 +187,11 @@ byId("weather-city-form").addEventListener("submit", async event => {
     const data = await response.json();
     const place = data.results?.[0];
     if (!place) {
-      weatherDetails.textContent = "Город не найден. Уточни название.";
+      weatherCityInput.value = "";
+      weatherCityInput.placeholder = "Укажите ваш город";
+      weatherSearchError = "Город не найден. Укажите ваш город.";
+      renderWeather();
+      weatherCityInput.focus();
       return;
     }
     weatherCity = {name: place.name, country: place.country, latitude: place.latitude, longitude: place.longitude};
@@ -177,7 +199,8 @@ byId("weather-city-form").addEventListener("submit", async event => {
     localStorage.setItem(weatherStorageKey, JSON.stringify(weatherCity));
     loadWeather();
   } catch {
-    weatherDetails.textContent = "Не удалось найти город. Проверь интернет и попробуй снова.";
+    weatherSearchError = "Не удалось найти город. Проверь интернет и попробуй снова.";
+    renderWeather();
   }
 });
 

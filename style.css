@@ -86,7 +86,9 @@ h2 { margin: 0; font-size: 1.15rem; }
 #weather-place, .weather small { color: var(--muted); font-size: .8rem; }
 .weather-form { display: flex; gap: 7px; margin-top: 10px; }
 .weather-form input { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid #c5c9e1; border-radius: 9px; background: white; }
+.weather-form input::placeholder { color: #8d8fa5; opacity: 1; }
 .weather-form button { min-height: 36px; padding: 6px 10px; }
+#weather-retry { min-height: 34px; padding: 5px 11px; margin: 0 0 8px; }
 #weather-details { margin: 10px 0 5px; line-height: 1.4; overflow-wrap: anywhere; }
 .weather a { color: var(--violet); }
 .timeline { max-height: 480px; min-height: 374px; overflow-y: auto; }
