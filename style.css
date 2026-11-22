@@ -274,6 +274,11 @@ footer { padding-bottom: 12px; }
   .workspace-toolbar { align-items: stretch; flex-direction: column; gap: 7px; margin-bottom: 10px; }
   .section-nav { align-self: flex-start; flex-wrap: wrap; }
   .search-box, .search-panel { width: 100%; }
+  #month-jump-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  #month-jump-form > .icon-button, #month-jump-form > #today { justify-self: center; }
+  #month-jump-form .month-jump { min-width: 0; flex-direction: column; align-items: stretch; gap: 3px; font-size: .75rem; }
+  #month-jump-form .month-jump input, #month-jump-form .month-jump select { width: 100%; min-width: 0; padding-inline: 5px; font-size: .85rem; }
+  #jump-to-month { align-self: end; padding-inline: 5px; }
   .week-grid .calendar-day { min-height: 155px; }
   .timeline { max-height: 320px; }
 }
