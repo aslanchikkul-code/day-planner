@@ -97,16 +97,12 @@ dialog::backdrop { background: #22213b70; }
 .dialog-heading { margin-bottom: 16px; }
 .dialog-actions { justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
 .field { display: grid; gap: 6px; font-weight: 650; margin-bottom: 12px; }
-.field input, .field select { border: 1px solid #c5c9e1; border-radius: 9px; padding: 9px 10px; min-width: 0; width: 100%; background: #fafaff; color: var(--ink); font-weight: 400; }
+.field input, .field select, .field textarea { border: 1px solid #c5c9e1; border-radius: 9px; padding: 9px 10px; min-width: 0; width: 100%; background: #fafaff; color: var(--ink); font-weight: 400; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .important-option { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-weight: 650; }
 .important-option input { width: 18px; height: 18px; accent-color: var(--violet); }
 .series-note { color: var(--muted); margin: 0 0 8px; }
 .conflict { padding: 10px 12px; border-radius: 9px; margin: 0 0 12px; color: #442581; background: #eee1ff; border-left: 3px solid #7952c8; }
-.quick-entry { padding: 10px; margin-bottom: 12px; background: #f3ebff; border-radius: 10px; }
-.quick-entry label { display: block; margin-bottom: 5px; font-weight: 650; }
-.quick-row { display: flex; gap: 6px; }
-.quick-row input { flex: 1; min-width: 0; padding: 8px; border: 1px solid #c7b1e2; border-radius: 8px; }
 #batch-dialog { width: min(575px, calc(100% - 24px)); }
 #batch-input { width: 100%; resize: vertical; border: 1px solid #c7b1e2; border-radius: 8px; padding: 8px; color: var(--ink); font: inherit; }
 .batch-buttons { margin-top: 10px; }
@@ -116,7 +112,6 @@ dialog::backdrop { background: #22213b70; }
 .batch-row { display: grid; gap: 2px; padding: 8px; background: #f3ebff; border-radius: 8px; overflow-wrap: anywhere; }
 .batch-error { background: #fff0f3; color: #8c2638; }
 .batch-warning { color: #4f288c; }
-#quick-error { color: #a2253b; margin: 6px 0 0; }
 #backup-status { margin: 14px 0 0; }
 #backup-status.error { color: #a2253b; }
 #form-error { color: #a2253b; margin: 4px 0; }
@@ -275,3 +270,7 @@ footer { padding-bottom: 12px; }
 .week-grid .day-preview[draggable=true] { cursor: grab; }
 .week-grid .day-preview[draggable=true]:active { cursor: grabbing; }
 .week-grid .calendar-day.drag-target { background: #e5d5ff; box-shadow: inset 0 0 0 2px #7952c8; }
+
+.field textarea { font: inherit; resize: vertical; }
+.task-note { display: block; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font-size: .875rem; margin-top: 3px; }
+.calendar-note { display: block; font-size: .8rem; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 2.8em; overflow: hidden; color: #604c7c; font-weight: 400; }

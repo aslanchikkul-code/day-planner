@@ -192,15 +192,8 @@
         <h2 id="dialog-title">Новое дело</h2>
         <button id="close-dialog" type="button" class="icon-button" aria-label="Закрыть">×</button>
       </div>
-      <div id="quick-entry" class="quick-entry">
-        <label for="quick-task">Быстрый ввод</label>
-        <div class="quick-row">
-          <input id="quick-task" type="text" maxlength="160" placeholder="завтра 19:00 Тренировка" autocomplete="off">
-          <button id="apply-quick-task" class="secondary" type="button">Подставить</button>
-        </div>
-        <p id="quick-error" role="alert" hidden></p>
-      </div>
       <label class="field">Название<input id="task-title" type="text" maxlength="120" placeholder="Например, прогулка" required></label>
+      <label class="field">Заметка<textarea id="task-note" rows="3" maxlength="2000" placeholder="Номер телефона, вопросы или важные детали"></textarea></label>
       <div class="form-row">
         <label class="field">Дата<input id="task-date" type="date" required></label>
         <label class="field">Время<input id="task-time" type="time" required></label>

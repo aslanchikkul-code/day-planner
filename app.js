@@ -13,6 +13,7 @@ const grid = byId("date-grid");
 const timeline = byId("timeline");
 const dialog = byId("task-dialog");
 const titleInput = byId("task-title");
+const noteInput = byId("task-note");
 const dateInput = byId("task-date");
 const timeInput = byId("task-time");
 const repeatInput = byId("task-repeat");
@@ -519,6 +520,7 @@ function renderCalendar() {
       preview.classList.toggle("important", Boolean(task.important));
       if (task.important) preview.append(element("span", "important-star", "★ "));
       preview.append(task.time + " " + task.title);
+      if (task.note) preview.append(element("span", "calendar-note", task.note));
       preview.classList.toggle("done", task.done);
       content.append(preview);
     }
@@ -582,6 +584,7 @@ function taskRow(task) {
   const category = categoryOf(task);
   if (category) edit.append(element("span", "task-category", category.name));
   edit.addEventListener("click", () => openTask(task));
+  if (task.note) edit.append(element("span", "task-note", task.note));
   row.append(check, edit);
   return row;
 }
@@ -849,7 +852,8 @@ function calendarFile(entries) {
       "DTSTART:" + calendarDateTime(task.date, task.time),
       "DTEND:" + calendarDateTime(endDate, clockTime(end)),
       "SUMMARY:" + calendarText(title));
-    if (task.done) lines.push("DESCRIPTION:Выполнено в Ритме");
+    const description = [task.done ? "Выполнено в Ритме" : "", task.note || ""].filter(Boolean).join("\n");
+    if (description) lines.push("DESCRIPTION:" + calendarText(description));
     lines.push("END:VEVENT");
   }
   lines.push("END:VCALENDAR");
@@ -985,7 +989,6 @@ function movePeriod(direction) {
   render(true);
 }
 
-const quickInput = byId("quick-task");
 
 function parseQuickTask(text, now = new Date()) {
   let remaining = text.trim();
@@ -1019,34 +1022,6 @@ function parseQuickTask(text, now = new Date()) {
   if (!remaining || remaining.length > 120) throw new Error("Добавь название дела длиной до 120 символов.");
   return {title: remaining, date, time};
 }
-
-function applyQuickTask() {
-  const message = byId("quick-error");
-  try {
-    const plan = parseQuickTask(quickInput.value);
-    titleInput.value = plan.title;
-    dateInput.value = plan.date;
-    timeInput.value = plan.time;
-    message.hidden = true;
-    showConflicts();
-    if (!plan.date) dateInput.focus();
-    else if (!plan.time) timeInput.focus();
-    else titleInput.focus();
-  } catch (error) {
-    message.textContent = error.message;
-    message.hidden = false;
-    quickInput.focus();
-  }
-}
-
-byId("apply-quick-task").addEventListener("click", applyQuickTask);
-quickInput.addEventListener("keydown", event => {
-  if (event.key === "Enter" && !event.isComposing) {
-    event.preventDefault();
-    applyQuickTask();
-  }
-});
-quickInput.addEventListener("input", () => { byId("quick-error").hidden = true; });
 
 const batchDialog = byId("batch-dialog");
 const batchInput = byId("batch-input");
@@ -1145,9 +1120,6 @@ batchSave.addEventListener("click", () => {
 function openTask(task, time = "09:00") {
   editingTask = task;
   taskCategory.value = task ? categoryOf(task)?.id || "" : categoryFilter.value === "none" ? "" : categoryFilter.value;
-  byId("quick-entry").hidden = Boolean(task);
-  byId("quick-error").hidden = true;
-  quickInput.value = "";
   byId("repeat-field").hidden = Boolean(task);
   repeatInput.value = "";
   byId("series-controls").hidden = !task?.seriesId;
@@ -1158,13 +1130,14 @@ function openTask(task, time = "09:00") {
   byId("delete-task").hidden = !task;
   byId("form-error").hidden = true;
   titleInput.value = task?.title || "";
+  noteInput.value = task?.note || "";
   dateInput.value = task?.date || selected;
   timeInput.value = task?.time || time;
   durationInput.value = task ? durationOf(task) : settings.defaultDuration;
   importantInput.checked = task ? Boolean(task.important) : importantOnly;
   showConflicts();
   dialog.showModal();
-  (task ? titleInput : quickInput).focus();
+  titleInput.focus();
 }
 
 byId("task-form").addEventListener("submit", event => {
@@ -1179,7 +1152,7 @@ byId("task-form").addEventListener("submit", event => {
   }
   const date = dateInput.value;
   const time = timeInput.value;
-  const fields = {title, date, time, duration: durationInput.valueAsNumber, important: importantInput.checked, category: taskCategory.value};
+  const fields = {title, date, time, note: noteInput.value.trim(), duration: durationInput.valueAsNumber, important: importantInput.checked, category: taskCategory.value};
   const task = editingTask;
   const moved = task && (task.date !== date || task.time !== time);
   if (!save(previous => {
@@ -1359,6 +1332,7 @@ function validTaskFields(task, partial = false) {
     && (task.duration === undefined || Number.isInteger(task.duration) && task.duration >= 1 && task.duration <= minutesPerDay)
     && (task.done === undefined || typeof task.done === "boolean")
     && (task.important === undefined || typeof task.important === "boolean")
+    && (task.note === undefined || typeof task.note === "string" && task.note.length <= 2000)
     && (task.category === undefined || typeof task.category === "string");
 }
 
@@ -1381,6 +1355,7 @@ function restoreBackup(text) {
       throw new Error("В копии есть некорректное дело.");
     }
     const result = {id: task.id, title: task.title, date: task.date, time: task.time, done: task.done ?? false};
+    if (task.note !== undefined) result.note = task.note;
     if (task.duration !== undefined) result.duration = task.duration;
     if (task.important !== undefined) result.important = task.important;
     if (task.category !== undefined) result.category = task.category;
@@ -1402,7 +1377,7 @@ function restoreBackup(text) {
         throw new Error("В копии есть некорректный перенос или отметка.");
       }
       result.occurrences[date] = {};
-      for (const key of ["title", "date", "time", "duration", "important", "done", "deleted", "category"]) {
+      for (const key of ["title", "date", "time", "duration", "important", "done", "deleted", "category", "note"]) {
         if (patch[key] !== undefined) result.occurrences[date][key] = patch[key];
       }
     }
