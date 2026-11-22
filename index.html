@@ -61,7 +61,9 @@
                 <button id="previous" type="button" class="icon-button" aria-label="Предыдущий период">‹</button>
                 <button id="today" type="button" class="secondary">Сегодня</button>
                 <button id="next" type="button" class="icon-button" aria-label="Следующий период">›</button>
-                <label class="month-jump">Месяц и год<input id="month-jump" type="month" aria-label="Выбрать месяц и год"></label>
+                <label class="month-jump">Месяц<select id="jump-month" aria-label="Месяц для перехода"></select></label>
+                <label class="month-jump">Год<input id="jump-year" type="number" min="1" max="9999" step="1" aria-label="Год для перехода"></label>
+                <button id="jump-to-month" type="button" class="secondary">Перейти</button>
               </div>
             </header>
             <div class="calendar-scroll" tabindex="0" aria-label="Календарь">

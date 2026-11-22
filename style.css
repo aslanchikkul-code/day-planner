@@ -54,7 +54,8 @@ h1 { font-size: clamp(2rem, 4vw, 3.25rem); letter-spacing: -.055em; margin: 0; l
 h2 { margin: 0; font-size: 1.15rem; }
 .navigation { display: flex; gap: 6px; }
 .month-jump { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: .85rem; }
-.month-jump input { min-height: 36px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: white; }
+.month-jump input, .month-jump select { min-height: 36px; min-width: 92px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: white; }
+.month-jump input { width: 88px; }
 .duration-fields { display: flex; gap: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
 .duration-fields .field { flex: 1; }
 .calendar-scroll { overflow: auto; }

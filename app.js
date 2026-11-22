@@ -480,7 +480,8 @@ function renderCalendar() {
   const firstOfMonth = new Date(date);
   firstOfMonth.setDate(1);
   const isWeek = view === "week";
-  byId("month-jump").value = dateKey(new Date(date.getFullYear(), date.getMonth(), 1)).slice(0, 7);
+  byId("jump-month").value = String(date.getMonth() + 1);
+  byId("jump-year").value = date.getFullYear();
   const start = isWeek ? week : monday(firstOfMonth);
   const lastOfMonth = new Date(firstOfMonth);
   lastOfMonth.setMonth(lastOfMonth.getMonth() + 1, 0);
@@ -1315,9 +1316,17 @@ byId("today").addEventListener("click", () => {
   selected = dateKey(new Date());
   render(true);
 });
-byId("month-jump").addEventListener("change", event => {
-  if (!event.target.value) return;
-  const [year, month] = event.target.value.split("-").map(Number);
+const jumpMonth = byId("jump-month");
+for (let month = 0; month < 12; month++) {
+  jumpMonth.add(new Option(new Intl.DateTimeFormat("ru-RU", {month: "long"}).format(new Date(2020, month, 1)), String(month + 1)));
+}
+byId("jump-to-month").addEventListener("click", () => {
+  const year = byId("jump-year").valueAsNumber;
+  const month = Number(jumpMonth.value);
+  if (!Number.isInteger(year) || year < 1 || year > 9999) {
+    byId("jump-year").focus();
+    return;
+  }
   const day = atDate(selected).getDate();
   const lastDay = new Date(year, month, 0).getDate();
   selected = dateKey(new Date(year, month - 1, Math.min(day, lastDay)));
