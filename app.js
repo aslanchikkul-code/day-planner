@@ -867,6 +867,36 @@ byId("export-week").addEventListener("click", () => {
   announce("Неделя скачивается в файл календаря.");
 });
 
+function csvCell(value) {
+  return '"' + String(value ?? "").replaceAll('"', '""') + '"';
+}
+
+function weekCsv(entries) {
+  const rows = [["Название", "Дата", "Время", "Длительность (мин)", "Категория", "Важное", "Статус", "Заметка"]];
+  for (const task of entries) {
+    const status = task.done ? "Выполнено" : task.date < dateKey(new Date()) ? "Просрочено" : "Запланировано";
+    rows.push([
+      task.title,
+      task.date,
+      task.time,
+      durationOf(task),
+      categoryOf(task)?.name || "Без категории",
+      task.important ? "Да" : "Нет",
+      status,
+      task.note || ""
+    ]);
+  }
+  return "\uFEFF" + rows.map(row => row.map(csvCell).join(";")).join("\r\n") + "\r\n";
+}
+
+byId("export-week-csv").addEventListener("click", () => {
+  const start = monday(atDate(selected));
+  const entries = tasksForWeek(start);
+  if (!entries.length) return;
+  downloadFile(weekCsv(entries), "text/csv;charset=utf-8", "rhythm-week-" + dateKey(start) + ".csv");
+  announce("Неделя скачивается в таблицу CSV.");
+});
+
 function formatMinutes(total) {
   const hours = Math.floor(total / 60);
   const minutes = total % 60;
@@ -918,6 +948,7 @@ function renderSummary() {
   const done = entries.filter(task => task.done).length;
   const overdue = entries.filter(task => !task.done && task.date < today).length;
   byId("export-week").disabled = planned === 0;
+  byId("export-week-csv").disabled = planned === 0;
   byId("summary-planned").textContent = planned;
   byId("summary-done").textContent = done;
   byId("summary-overdue").textContent = overdue;
