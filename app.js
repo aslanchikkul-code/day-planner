@@ -763,7 +763,7 @@ function renderSearch() {
     return;
   }
   const today = dateKey(new Date());
-  const matches = task => queryText(task.title).includes(query);
+  const matches = task => queryText(task.title + " " + (task.note || "")).includes(query);
   const found = recordedTasks().filter(matches);
   for (const series of tasks) {
     if (!series.repeat || !matches(series)) continue;
