@@ -1320,13 +1320,10 @@ const jumpMonth = byId("jump-month");
 for (let month = 0; month < 12; month++) {
   jumpMonth.add(new Option(new Intl.DateTimeFormat("ru-RU", {month: "long"}).format(new Date(2020, month, 1)), String(month + 1)));
 }
-byId("jump-to-month").addEventListener("click", () => {
+byId("month-jump-form").addEventListener("submit", event => {
+  event.preventDefault();
   const year = byId("jump-year").valueAsNumber;
   const month = Number(jumpMonth.value);
-  if (!Number.isInteger(year) || year < 1 || year > 9999) {
-    byId("jump-year").focus();
-    return;
-  }
   const day = atDate(selected).getDate();
   const lastDay = new Date(year, month, 0).getDate();
   selected = dateKey(new Date(year, month - 1, Math.min(day, lastDay)));
