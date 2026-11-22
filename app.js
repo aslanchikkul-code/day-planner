@@ -1269,6 +1269,7 @@ for (const id of ["add-task", "add-day-task"]) {
 }
 byId("previous").addEventListener("click", () => movePeriod(-1));
 byId("next").addEventListener("click", () => movePeriod(1));
+byId("print-calendar").addEventListener("click", () => window.print());
 byId("today").addEventListener("click", () => {
   selected = dateKey(new Date());
   render(true);
